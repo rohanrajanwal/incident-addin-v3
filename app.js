@@ -810,8 +810,8 @@ const app = {
         const preview = document.getElementById(previewId);
         if (preview) {
           preview.innerHTML =
-            `<img src="${blobUrl}" style="height:64px;width:auto;max-width:calc(100% - 36px);border-radius:6px;object-fit:cover;flex-shrink:0">` +
-            `<button class="remove-photo" onclick="event.stopPropagation();${removeCall}" style="position:static;width:22px;height:22px;line-height:22px">&times;</button>`;
+            `<img src="${blobUrl}" style="height:56px;width:auto;max-width:calc(100% - 48px);border-radius:6px;object-fit:cover;flex-shrink:0">` +
+            `<button class="doc-remove-btn" onclick="event.stopPropagation();${removeCall}">&times;</button>`;
           document.getElementById(uploadId).style.display = 'none';
           preview.style.display = 'flex';
         }

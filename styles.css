@@ -647,18 +647,23 @@ body {
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
   border-radius: 50%;
-  background: rgba(0,0,0,0.6);
-  color: white;
+  background: rgba(255,255,255,0.9);
+  backdrop-filter: blur(4px);
+  color: #c62828;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
 }
 
 /* ---- Vehicle Damage Diagram ---- */
@@ -1573,6 +1578,27 @@ body {
   padding: 10px 12px;
   margin-top: 8px;
 }
+
+.doc-remove-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border-radius: 50%;
+  background: #ef5350;
+  border: none;
+  color: white;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.doc-remove-btn:hover { background: #c62828; }
 
 /* ---- In-app video recording overlay ---- */
 .video-record-overlay {
