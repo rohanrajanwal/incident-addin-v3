@@ -155,7 +155,9 @@ const app = {
 
     try {
       const deviceId = this.state?.device?.id;
+      console.log('[Incidents] state.device:', JSON.stringify(this.state?.device || null));
       if (!deviceId) {
+        console.warn('[Incidents] No deviceId in state — cannot load incidents');
         this.renderFallbackIncidents(currentList, pastHeader, pastSubtitle, pastList);
         return;
       }
@@ -165,18 +167,22 @@ const app = {
 
       // Fetch exception events for this device in the last 30 days
       const [events, existingReports] = await Promise.all([
-        this.api.call('Get', {
-          typeName: 'ExceptionEvent',
-          search: {
-            deviceSearch: { id: deviceId },
-            fromDate: thirtyDaysAgo.toISOString(),
-            toDate: now.toISOString()
-          }
-        }),
-        this.api.call('Get', {
-          typeName: 'AddInData',
-          search: { addInId: 'aIncidentReport001' }
-        }).catch(() => [])
+        new Promise((resolve, reject) =>
+          this.api.call('Get', {
+            typeName: 'ExceptionEvent',
+            search: {
+              deviceSearch: { id: deviceId },
+              fromDate: thirtyDaysAgo.toISOString(),
+              toDate: now.toISOString()
+            }
+          }, resolve, reject)
+        ),
+        new Promise((resolve) =>
+          this.api.call('Get', {
+            typeName: 'AddInData',
+            search: { addInId: 'aIncidentReport001' }
+          }, resolve, () => resolve([]))
+        )
       ]);
 
       // Build set of already-reported exception event IDs
