@@ -481,19 +481,9 @@ const app = {
   },
 
   capturePoliceReport() {
-    const onFile = (file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.reportData.policeReport.document = reader.result;
-        document.getElementById('policeDocUpload').style.display = 'none';
-        document.getElementById('policeDocPreview').style.display = 'flex';
-      };
-      reader.readAsDataURL(file);
-    };
-    this._showDocMenu(
-      () => this._imageInput(true, onFile),
-      () => this._imageInput(false, onFile)
-    );
+    this._captureDocFile('policeDocUpload', 'policeDocPreview', 'app.removePoliceDoc()', (data) => {
+      this.reportData.policeReport.document = data;
+    });
   },
 
   removePoliceDoc() {
@@ -503,19 +493,9 @@ const app = {
   },
 
   captureCitationDoc() {
-    const onFile = (file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.reportData.policeReport.citationDoc = reader.result;
-        document.getElementById('citationDocUpload').style.display = 'none';
-        document.getElementById('citationDocPreview').style.display = 'flex';
-      };
-      reader.readAsDataURL(file);
-    };
-    this._showDocMenu(
-      () => this._imageInput(true, onFile),
-      () => this._imageInput(false, onFile)
-    );
+    this._captureDocFile('citationDocUpload', 'citationDocPreview', 'app.removeCitationDoc()', (data) => {
+      this.reportData.policeReport.citationDoc = data;
+    });
   },
 
   removeCitationDoc() {
@@ -547,19 +527,9 @@ const app = {
   },
 
   capturePropertyPhoto() {
-    const onFile = (file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.reportData.propertyDamageInfo.photo = reader.result;
-        document.getElementById('propertyPhotoUpload').style.display = 'none';
-        document.getElementById('propertyPhotoPreview').style.display = 'flex';
-      };
-      reader.readAsDataURL(file);
-    };
-    this._showDocMenu(
-      () => this._imageInput(true, onFile),
-      () => this._imageInput(false, onFile)
-    );
+    this._captureDocFile('propertyPhotoUpload', 'propertyPhotoPreview', 'app.removePropertyPhoto()', (data) => {
+      this.reportData.propertyDamageInfo.photo = data;
+    });
   },
 
   removePropertyPhoto() {
@@ -824,27 +794,48 @@ const app = {
     input.click();
   },
 
+  // Generic document capture: skips app-native menu, goes straight to OS native picker.
+  // iOS shows "Take Photo / Photo Library / Browse" in one step.
+  // Android shows camera + gallery in one step.
+  // Shows a thumbnail of the chosen image in the preview element.
+  _captureDocFile(uploadId, previewId, removeCall, onStore) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const blobUrl = URL.createObjectURL(file);
+        const preview = document.getElementById(previewId);
+        if (preview) {
+          preview.innerHTML =
+            `<img src="${blobUrl}" style="height:64px;width:auto;max-width:calc(100% - 36px);border-radius:6px;object-fit:cover;flex-shrink:0">` +
+            `<button class="remove-photo" onclick="event.stopPropagation();${removeCall}" style="position:static;width:22px;height:22px;line-height:22px">&times;</button>`;
+          document.getElementById(uploadId).style.display = 'none';
+          preview.style.display = 'flex';
+        }
+        const reader = new FileReader();
+        reader.onload = () => onStore(reader.result);
+        reader.readAsDataURL(file);
+      }
+      if (input.parentNode) input.parentNode.removeChild(input);
+    };
+    document.body.appendChild(input);
+    input.click();
+  },
+
   // ---- Extra document captures (license, insurance, tag) ----
   captureExtraDoc(type) {
     const map = {
-      license:   { key: 'docLicense',   box: 'docLicenseBox',   preview: 'docLicensePreview' },
-      insurance: { key: 'docInsurance',  box: 'docInsuranceBox', preview: 'docInsurancePreview' },
-      tag:       { key: 'docTag',        box: 'docTagBox',       preview: 'docTagPreview' }
+      license:   { key: 'docLicense',   box: 'docLicenseBox',   preview: 'docLicensePreview',   rm: "app.removeExtraDoc('license')" },
+      insurance: { key: 'docInsurance', box: 'docInsuranceBox', preview: 'docInsurancePreview', rm: "app.removeExtraDoc('insurance')" },
+      tag:       { key: 'docTag',       box: 'docTagBox',       preview: 'docTagPreview',       rm: "app.removeExtraDoc('tag')" }
     }[type];
     if (!map) return;
-    const onFile = (file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.reportData[map.key] = reader.result;
-        document.getElementById(map.box).style.display = 'none';
-        document.getElementById(map.preview).style.display = 'flex';
-      };
-      reader.readAsDataURL(file);
-    };
-    this._showDocMenu(
-      () => this._imageInput(true, onFile),
-      () => this._imageInput(false, onFile)
-    );
+    this._captureDocFile(map.box, map.preview, map.rm, (data) => {
+      this.reportData[map.key] = data;
+    });
   },
 
   removeExtraDoc(type) {
@@ -1169,18 +1160,24 @@ const app = {
 
   // ---- Document OCR ----
   captureDocument() {
-    const onFile = async (file) => {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        this.reportData.ocr.documentImage = reader.result;
-        await this.processDocumentOCR(reader.result);
-      };
-      reader.readAsDataURL(file);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          this.reportData.ocr.documentImage = reader.result;
+          await this.processDocumentOCR(reader.result);
+        };
+        reader.readAsDataURL(file);
+      }
+      if (input.parentNode) input.parentNode.removeChild(input);
     };
-    this._showDocMenu(
-      () => this._imageInput(true, onFile),
-      () => this._imageInput(false, onFile)
-    );
+    document.body.appendChild(input);
+    input.click();
   },
 
   async processDocumentOCR(imageData) {
@@ -1570,50 +1567,51 @@ populateContextScreen() {
     this.setEl('submitStatus', 'Saving report…');
     const d = this.reportData;
     const reportText = this.formatReportText();
-    const addInDataId = await this.api.call('Add', {
-      typeName: 'AddInData',
-      entity: {
-        addInId: 'aIncidentReport001',
-        details: {
-          exceptionEventId: exceptionEventId || null,
-          submittedAt: dateTime,
-          device: { id: deviceId, name: this.state.device.name },
-          driver: driverId ? { id: driverId, name: this.state.driver.name } : null,
-          mediaFileIds,
-          reportText,
-          incident: {
-            answers: d.answers,
-            narrative: d.narrative,
-            occupancy: d.occupancy,
-            witnesses: { hasWitnesses: d.witnesses.hasWitnesses, name: d.witnesses.name, phone: d.witnesses.phone },
-            policeReport: { filed: d.policeReport.filed, violations: d.policeReport.violations, citations: d.policeReport.citations },
-            propertyDamage: {
-              damaged: d.propertyDamageInfo.damaged,
-              propertyName: d.propertyDamageInfo.propertyName,
-              address: d.propertyDamageInfo.address,
-              ownerName: d.propertyDamageInfo.ownerName,
-            },
-            thirdPartyOcr: d.ocr,
-            thirdPartyPhone: d.thirdPartyPhone,
-            damageZones: d.damageZones,
-            severityFirst: d.severityFirst,
-            severityThird: d.severityThird,
+    const addInDataId = await new Promise((resolve, reject) =>
+      this.api.call('Add', {
+        typeName: 'AddInData',
+        entity: {
+          addInId: 'aIncidentReport001',
+          details: {
+            exceptionEventId: exceptionEventId || null,
+            submittedAt: dateTime,
+            device: { id: deviceId, name: this.state.device.name },
+            driver: driverId ? { id: driverId, name: this.state.driver.name } : null,
+            mediaFileIds,
+            reportText,
+            incident: {
+              answers: d.answers,
+              narrative: d.narrative,
+              occupancy: d.occupancy,
+              witnesses: { hasWitnesses: d.witnesses.hasWitnesses, name: d.witnesses.name, phone: d.witnesses.phone },
+              policeReport: { filed: d.policeReport.filed, violations: d.policeReport.violations, citations: d.policeReport.citations },
+              propertyDamage: {
+                damaged: d.propertyDamageInfo.damaged,
+                propertyName: d.propertyDamageInfo.propertyName,
+                address: d.propertyDamageInfo.address,
+                ownerName: d.propertyDamageInfo.ownerName,
+              },
+              thirdPartyOcr: d.ocr,
+              thirdPartyPhone: d.thirdPartyPhone,
+              damageZones: d.damageZones,
+              severityFirst: d.severityFirst,
+              severityThird: d.severityThird,
+            }
           }
         }
-      }
-    });
+      }, resolve, reject)
+    );
 
     // 5. Add report text as a comment on the ExceptionEvent so it's visible in the Geotab UI
     if (exceptionEventId) {
       this.setEl('submitStatus', 'Adding comment to exception…');
       try {
-        await this.api.call('Set', {
-          typeName: 'ExceptionEvent',
-          entity: {
-            id: exceptionEventId,
-            comment: reportText
-          }
-        });
+        await new Promise((resolve, reject) =>
+          this.api.call('Set', {
+            typeName: 'ExceptionEvent',
+            entity: { id: exceptionEventId, comment: reportText }
+          }, resolve, reject)
+        );
       } catch (e) {
         // comment field may not be writable on all server versions — non-fatal
         console.warn('[Submit] Could not set ExceptionEvent comment:', e);
@@ -1636,14 +1634,16 @@ populateContextScreen() {
     try {
       const now = new Date();
       const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
-      const events = await this.api.call('Get', {
-        typeName: 'ExceptionEvent',
-        search: {
-          deviceSearch: { id: this.state.device.id },
-          fromDate: twoHoursAgo.toISOString(),
-          toDate: now.toISOString(),
-        }
-      });
+      const events = await new Promise((resolve, reject) =>
+        this.api.call('Get', {
+          typeName: 'ExceptionEvent',
+          search: {
+            deviceSearch: { id: this.state.device.id },
+            fromDate: twoHoursAgo.toISOString(),
+            toDate: now.toISOString(),
+          }
+        }, resolve, reject)
+      );
       if (events && events.length > 0) {
         events.sort((a, b) => new Date(b.activeFrom) - new Date(a.activeFrom));
         return events[0].id;
@@ -1659,19 +1659,21 @@ populateContextScreen() {
     const resized = await this._resizeImage(base64DataUrl);
 
     // Step 1: Create the MediaFile entity record
-    const entityId = await this.api.call('Add', {
-      typeName: 'MediaFile',
-      entity: {
-        device: { id: deviceId },
-        ...(driverId ? { driver: { id: driverId } } : {}),
-        fromDate: dateTime,
-        toDate: dateTime,
-        mediaType: 'Image',
-        name: name,
-        solutionId: 'IncidentReport',
-        metaData: exceptionEventId ? { exceptionEventId } : {}
-      }
-    });
+    const entityId = await new Promise((resolve, reject) =>
+      this.api.call('Add', {
+        typeName: 'MediaFile',
+        entity: {
+          device: { id: deviceId },
+          ...(driverId ? { driver: { id: driverId } } : {}),
+          fromDate: dateTime,
+          toDate: dateTime,
+          mediaType: 'Image',
+          name: name,
+          solutionId: 'IncidentReport',
+          metaData: exceptionEventId ? { exceptionEventId } : {}
+        }
+      }, resolve, reject)
+    );
 
     // Step 2: POST the binary via UploadMediaFile endpoint
     if (!entityId || !credentials || !server) {
@@ -1705,19 +1707,21 @@ populateContextScreen() {
 
   async uploadVideoFile(blob, name, deviceId, driverId, dateTime, exceptionEventId, server, credentials) {
     // Create the MediaFile entity record for a video
-    const entityId = await this.api.call('Add', {
-      typeName: 'MediaFile',
-      entity: {
-        device: { id: deviceId },
-        ...(driverId ? { driver: { id: driverId } } : {}),
-        fromDate: dateTime,
-        toDate: dateTime,
-        mediaType: 'Video',
-        name: name,
-        solutionId: 'IncidentReport',
-        metaData: exceptionEventId ? { exceptionEventId } : {}
-      }
-    });
+    const entityId = await new Promise((resolve, reject) =>
+      this.api.call('Add', {
+        typeName: 'MediaFile',
+        entity: {
+          device: { id: deviceId },
+          ...(driverId ? { driver: { id: driverId } } : {}),
+          fromDate: dateTime,
+          toDate: dateTime,
+          mediaType: 'Video',
+          name: name,
+          solutionId: 'IncidentReport',
+          metaData: exceptionEventId ? { exceptionEventId } : {}
+        }
+      }, resolve, reject)
+    );
 
     if (!entityId || !credentials || !server) {
       console.warn('[Submit] Skipping video binary upload — missing credentials or server');
