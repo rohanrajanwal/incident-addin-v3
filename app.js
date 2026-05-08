@@ -1499,10 +1499,10 @@ populateContextScreen() {
     lines.push(`<strong>Exception Event:</strong> ${exceptionEventId || '<span style="color:var(--text-muted)">None</span>'}`);
 
     if (addInDataId) {
-      lines.push(`<strong>AddInData:</strong> <code style="font-size:11px;word-break:break-all">${addInDataId}</code>`);
+      lines.push(`<strong>AddInData:</strong> saved ✓`);
     } else {
       const errDetail = addInDataError ? ` — ${addInDataError}` : '';
-      lines.push(`<strong>AddInData:</strong> <span style="color:var(--error)">Failed${errDetail}</span>`);
+      lines.push(`<strong>AddInData:</strong> <span style="color:var(--text-muted)">Skipped${errDetail}</span>`);
     }
 
     if (mediaFileIds.length > 0) {
@@ -1588,14 +1588,36 @@ populateContextScreen() {
     const reportText = this.formatReportText();
     // Strip raw image data from OCR — only keep extracted text fields (image already uploaded as MediaFile)
     const { documentImage: _omit, ...ocrTextFields } = d.ocr || {};
+    // Look up the actual registered add-in ID — AddInData requires a valid registered AddIn id
+    let resolvedAddInId = this._cachedAddInId || null;
+    if (!resolvedAddInId) {
+      try {
+        const addIns = await new Promise((resolve) =>
+          this.api.call('Get', { typeName: 'AddIn' }, resolve, () => resolve([]))
+        );
+        const mine = (addIns || []).find(a =>
+          JSON.stringify(a.configuration || a).includes('incident-addin-v2')
+        );
+        resolvedAddInId = mine?.id || null;
+        if (resolvedAddInId) this._cachedAddInId = resolvedAddInId;
+        console.log('[Submit] Resolved AddIn id:', resolvedAddInId, 'from', (addIns || []).length, 'add-ins');
+      } catch (e) {
+        console.warn('[Submit] Could not look up AddIn id:', e);
+      }
+    }
+
     let addInDataId = null;
     let addInDataError = null;
+    if (!resolvedAddInId) {
+      addInDataError = 'Add-in not found in database — AddInData skipped';
+      console.warn('[Submit]', addInDataError);
+    } else {
     try {
       addInDataId = await new Promise((resolve, reject) =>
         this.api.call('Add', {
           typeName: 'AddInData',
           entity: {
-            addInId: 'aIncidentReport001',
+            addInId: resolvedAddInId,
             details: {
               exceptionEventId: exceptionEventId || null,
               submittedAt: dateTime,
@@ -1629,6 +1651,7 @@ populateContextScreen() {
       addInDataError = e?.message || e?.name || JSON.stringify(e);
       console.error('[Submit] AddInData Add failed:', e);
     }
+    } // end if (resolvedAddInId)
 
     // 5. Add report text as a comment on the ExceptionEvent so it's visible in the Geotab UI
     if (exceptionEventId) {
@@ -1711,7 +1734,7 @@ populateContextScreen() {
           fromDate: eventDateTime,
           toDate: eventDateTime,
           mediaType: 'Image',
-          name: name,
+          name: name + '.jpg',
           metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
         }
       }, resolve, reject)
@@ -1732,7 +1755,7 @@ populateContextScreen() {
       const blob = new Blob([byteArray], { type: mimeType });
 
       const formData = new FormData();
-      formData.append('file', blob, name + '.jpg');
+      formData.append('file', blob, name + '.jpg'); // must match entity name
 
       const credStr = encodeURIComponent(JSON.stringify(credentials));
       const mediaStr = encodeURIComponent(JSON.stringify({ id: entityId }));
@@ -1758,7 +1781,7 @@ populateContextScreen() {
           fromDate: eventDateTime,
           toDate: eventDateTime,
           mediaType: 'Video',
-          name: name,
+          name: name + '.mp4',
           metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
         }
       }, resolve, reject)
