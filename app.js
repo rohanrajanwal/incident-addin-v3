@@ -165,8 +165,13 @@ const app = {
       const now = new Date();
       const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
-      // Fetch exception events for this device in the last 30 days
-      const [events, existingReports] = await Promise.all([
+      const COLLISION_RULE_NAMES = ['Possible collision', 'Major Collision'];
+
+      // Fetch rules, events, and existing reports in parallel
+      const [allRules, events, existingReports] = await Promise.all([
+        new Promise((resolve) =>
+          this.api.call('Get', { typeName: 'Rule' }, resolve, () => resolve([]))
+        ),
         new Promise((resolve, reject) =>
           this.api.call('Get', {
             typeName: 'ExceptionEvent',
@@ -185,6 +190,14 @@ const app = {
         )
       ]);
 
+      // Build set of collision rule IDs by matching rule names
+      const collisionRuleIds = new Set(
+        (allRules || []).filter(r => COLLISION_RULE_NAMES.includes(r.name)).map(r => r.id)
+      );
+      console.log('[Incidents] collision rule IDs:', [...collisionRuleIds]);
+      console.log('[Incidents] total events fetched:', (events || []).length);
+      console.log('[Incidents] sample event rule:', JSON.stringify(events?.[0]?.rule || null));
+
       // Build set of already-reported exception event IDs
       const reportedIds = new Set(
         (existingReports || [])
@@ -192,9 +205,8 @@ const app = {
           .filter(Boolean)
       );
 
-      // Filter to collision-related rules only
-      const COLLISION_RULES = ['Possible collision', 'Major Collision'];
-      const collisionEvents = (events || []).filter(e => COLLISION_RULES.includes(e.rule?.name));
+      // Filter to collision rules only (by ID, not name — name may not be on event objects)
+      const collisionEvents = (events || []).filter(e => collisionRuleIds.has(e.rule?.id));
 
       // Cache events for context lookup when starting a report
       this._eventsCache = {};
