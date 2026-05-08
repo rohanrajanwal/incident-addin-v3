@@ -1493,24 +1493,28 @@ populateContextScreen() {
       return;
     }
 
-    const { addInDataId, mediaFileIds = [], exceptionEventId } = receipt;
+    const { addInDataId, addInDataError, mediaFileIds = [], uploadErrors = [], exceptionEventId } = receipt;
     const lines = [];
 
-    if (addInDataId) {
-      lines.push(`<strong>AddInData ID:</strong> <code style="font-size:11px;word-break:break-all">${addInDataId}</code>`);
-    } else {
-      lines.push(`<strong>AddInData:</strong> <span style="color:var(--error)">Not created (API may have failed)</span>`);
-    }
+    lines.push(`<strong>Exception Event:</strong> ${exceptionEventId || '<span style="color:var(--text-muted)">None</span>'}`);
 
-    lines.push(`<strong>Exception Event:</strong> ${exceptionEventId || '<span style="color:var(--text-muted)">None (test incident)</span>'}`);
+    if (addInDataId) {
+      lines.push(`<strong>AddInData:</strong> <code style="font-size:11px;word-break:break-all">${addInDataId}</code>`);
+    } else {
+      const errDetail = addInDataError ? ` — ${addInDataError}` : '';
+      lines.push(`<strong>AddInData:</strong> <span style="color:var(--error)">Failed${errDetail}</span>`);
+    }
 
     if (mediaFileIds.length > 0) {
       lines.push(`<strong>Files uploaded (${mediaFileIds.length}):</strong>`);
-      mediaFileIds.forEach(f => {
-        lines.push(`&nbsp;&nbsp;• ${f.name} <code style="font-size:10px;color:var(--text-muted)">${f.id}</code>`);
-      });
+      mediaFileIds.forEach(f => lines.push(`&nbsp;&nbsp;• ${f.name}`));
     } else {
       lines.push(`<strong>Files uploaded:</strong> None`);
+    }
+
+    if (uploadErrors.length > 0) {
+      lines.push(`<strong style="color:var(--error)">Upload errors (${uploadErrors.length}):</strong>`);
+      uploadErrors.slice(0, 3).forEach(e => lines.push(`<span style="font-size:11px;color:var(--error);word-break:break-all">&nbsp;&nbsp;• ${e}</span>`));
     }
 
     el.innerHTML = lines.join('<br>');
@@ -1547,6 +1551,7 @@ populateContextScreen() {
 
     // 3. Upload each file as MediaFile dated to the exception time so it appears on the exception page
     const mediaFileIds = [];
+    const uploadErrors = [];
     for (let i = 0; i < uploads.length; i++) {
       const item = uploads[i];
       this.setEl('submitStatus', `Uploading ${i + 1} of ${uploads.length}: ${item.name}…`);
@@ -1557,7 +1562,9 @@ populateContextScreen() {
         );
         if (id) mediaFileIds.push({ id, name: item.name });
       } catch (e) {
+        const msg = e?.message || e?.name || JSON.stringify(e);
         console.warn('[Submit] Upload failed for', item.name, e);
+        uploadErrors.push(`${item.name}: ${msg}`);
       }
     }
 
@@ -1582,6 +1589,7 @@ populateContextScreen() {
     // Strip raw image data from OCR — only keep extracted text fields (image already uploaded as MediaFile)
     const { documentImage: _omit, ...ocrTextFields } = d.ocr || {};
     let addInDataId = null;
+    let addInDataError = null;
     try {
       addInDataId = await new Promise((resolve, reject) =>
         this.api.call('Add', {
@@ -1618,8 +1626,8 @@ populateContextScreen() {
         }, resolve, reject)
       );
     } catch (e) {
+      addInDataError = e?.message || e?.name || JSON.stringify(e);
       console.error('[Submit] AddInData Add failed:', e);
-      // Non-fatal — media files and comment may still have succeeded
     }
 
     // 5. Add report text as a comment on the ExceptionEvent so it's visible in the Geotab UI
@@ -1638,7 +1646,7 @@ populateContextScreen() {
       }
     }
 
-    return { addInDataId, mediaFileIds, exceptionEventId };
+    return { addInDataId, addInDataError, mediaFileIds, uploadErrors, exceptionEventId };
   },
 
   // ---- Submission helpers ----
@@ -1704,8 +1712,7 @@ populateContextScreen() {
           toDate: eventDateTime,
           mediaType: 'Image',
           name: name,
-          solutionId: 'IncidentReport',
-          metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : '{}'
+          metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
         }
       }, resolve, reject)
     );
@@ -1752,8 +1759,7 @@ populateContextScreen() {
           toDate: eventDateTime,
           mediaType: 'Video',
           name: name,
-          solutionId: 'IncidentReport',
-          metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : '{}'
+          metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
         }
       }, resolve, reject)
     );
