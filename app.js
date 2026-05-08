@@ -1160,24 +1160,17 @@ const app = {
 
   // ---- Document OCR ----
   captureDocument() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          this.reportData.ocr.documentImage = reader.result;
-          await this.processDocumentOCR(reader.result);
-        };
-        reader.readAsDataURL(file);
-      }
-      if (input.parentNode) input.parentNode.removeChild(input);
-    };
-    document.body.appendChild(input);
-    input.click();
+    this._captureDocFile('ocrDocUpload', 'ocrDocPreview', 'app.removeDocument()', async (data) => {
+      this.reportData.ocr.documentImage = data;
+      await this.processDocumentOCR(data);
+    });
+  },
+
+  removeDocument() {
+    this.reportData.ocr.documentImage = null;
+    document.getElementById('ocrDocUpload').style.display = '';
+    document.getElementById('ocrDocPreview').style.display = 'none';
+    document.getElementById('ocrResults').style.display = 'none';
   },
 
   async processDocumentOCR(imageData) {
