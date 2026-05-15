@@ -1735,6 +1735,7 @@ populateContextScreen() {
           toDate: eventDateTime,
           mediaType: 'Image',
           name: name + '.jpg',
+          solutionId: 'IncidentReport',
           metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
         }
       }, resolve, reject)
@@ -1782,6 +1783,7 @@ populateContextScreen() {
           toDate: eventDateTime,
           mediaType: 'Video',
           name: name + '.mp4',
+          solutionId: 'IncidentReport',
           metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
         }
       }, resolve, reject)
