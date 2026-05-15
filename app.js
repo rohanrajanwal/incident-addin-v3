@@ -1736,7 +1736,7 @@ populateContextScreen() {
           mediaType: 'Image',
           name: name + '.jpg',
           solutionId: 'IncidentReport',
-          metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
+          ...(exceptionEventId ? { metaData: { exceptionEventId } } : {})
         }
       }, resolve, reject)
     );
@@ -1784,7 +1784,7 @@ populateContextScreen() {
           mediaType: 'Video',
           name: name + '.mp4',
           solutionId: 'IncidentReport',
-          metaData: exceptionEventId ? JSON.stringify({ exceptionEventId }) : undefined
+          ...(exceptionEventId ? { metaData: { exceptionEventId } } : {})
         }
       }, resolve, reject)
     );
