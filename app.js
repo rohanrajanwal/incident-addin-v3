@@ -1724,14 +1724,17 @@ populateContextScreen() {
     const resized = await this._resizeImage(base64DataUrl);
 
     // Step 1: Create the MediaFile entity record
-    // DIAGNOSTIC: stripped to minimum fields to isolate what the API rejects
     const entity = {
       device: { id: deviceId },
+      ...(driverId ? { driver: { id: driverId } } : {}),
+      fromDate: eventDateTime,
+      toDate: eventDateTime,
       mediaType: 'Image',
       name: name + '.jpg',
       solutionId: 'IncidentReport',
+      ...(exceptionEventId ? { metaData: { exceptionEventId } } : {}),
     };
-    console.log('[Submit] MediaFile entity:', JSON.stringify(entity), 'deviceId:', deviceId);
+    console.log('[Submit] MediaFile entity:', JSON.stringify(entity));
     const entityId = await new Promise((resolve, reject) =>
       this.api.call('Add', { typeName: 'MediaFile', entity }, resolve, reject)
     );
