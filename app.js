@@ -1747,6 +1747,7 @@ populateContextScreen() {
     const resized = await this._resizeImage(base64DataUrl);
 
     // Step 1: Create the MediaFile entity record
+    // DIAGNOSTIC: no metaData — testing if that field causes the GenericException
     const entity = {
       device: { id: deviceId },
       ...(driverId ? { driver: { id: driverId } } : {}),
@@ -1755,7 +1756,6 @@ populateContextScreen() {
       mediaType: 'Image',
       name: name + '.jpg',
       solutionId: 'IncidentReport',
-      ...(exceptionEventId ? { metaData: { exceptionEventId } } : {}),
     };
     console.log('[Submit] MediaFile entity:', JSON.stringify(entity));
     const entityId = await new Promise((resolve, reject) =>
