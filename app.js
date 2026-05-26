@@ -1571,7 +1571,7 @@ populateContextScreen() {
     const deviceId = this.state.device.id;
     const driverId = this.state.driver?.id || null;
     const dateTime = new Date().toISOString();
-    const server = this.state.server || 'my.geotab.com';
+    const server = document.location.hostname || this.state?.server || 'my.geotab.com';
     const credentials = await this._getApiCredentials();
 
     // 1. Find the relevant exception event (full object for activeFrom timestamp)
@@ -1826,13 +1826,13 @@ populateContextScreen() {
       for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
       const blob = new Blob([byteArray], { type: mimeType });
 
-      const host = server.startsWith('http') ? new URL(server).hostname : server;
+      const host = server.includes('://') ? new URL(server).hostname : server;
       const params = { method: 'UploadMediaFile', params: { credentials, mediaFile: { id: entityId } } };
       const formData = new FormData();
       formData.append('JSON-RPC', encodeURIComponent(JSON.stringify(params)));
       formData.append(fileName, blob, fileName);
 
-      const resp = await fetch(`https://${host}/apiv1/`, { method: 'POST', body: formData });
+      const resp = await fetch(`https://${host}/apiv1`, { method: 'POST', body: formData });
       const json = await resp.json().catch(() => null);
       if (json?.error) console.warn('[Submit] UploadMediaFile error:', json.error);
     } catch (e) {
@@ -1858,13 +1858,13 @@ populateContextScreen() {
     }
 
     try {
-      const host = server.startsWith('http') ? new URL(server).hostname : server;
+      const host = server.includes('://') ? new URL(server).hostname : server;
       const params = { method: 'UploadMediaFile', params: { credentials, mediaFile: { id: entityId } } };
       const formData = new FormData();
       formData.append('JSON-RPC', encodeURIComponent(JSON.stringify(params)));
       formData.append(fileName, blob, fileName);
 
-      const resp = await fetch(`https://${host}/apiv1/`, { method: 'POST', body: formData });
+      const resp = await fetch(`https://${host}/apiv1`, { method: 'POST', body: formData });
       const json = await resp.json().catch(() => null);
       if (json?.error) console.warn('[Submit] UploadMediaFile video error:', json.error);
     } catch (e) {
@@ -1891,11 +1891,17 @@ populateContextScreen() {
   },
 
   async _getApiCredentials() {
+    // Returns the inner { userName, sessionId, database } credentials object.
+    // api.getSession() in Drive returns the full session: { credentials: { ... }, server, ... }.
+    // UploadMediaFile's params expect only the inner credentials, NOT the wrapping session.
+    // (Wrapping the whole session would double-nest credentials and the server rejects it.)
+    const unwrap = (s) => (s && s.credentials) ? s.credentials : s;
+
     // 1. Use the documented api.getSession() if available (standard Geotab JS API)
     if (typeof this.api?.getSession === 'function') {
       return new Promise((resolve) => {
         try {
-          this.api.getSession((creds) => resolve(creds || null));
+          this.api.getSession((session) => resolve(unwrap(session) || null));
         } catch (e) {
           resolve(null);
         }
@@ -1903,8 +1909,8 @@ populateContextScreen() {
     }
     // 2. Fall back to internal property inspection
     for (const src of [this.api, this.api?._api, this.api?._rpc]) {
-      if (src?._credentials) return src._credentials;
-      if (src?.credentials) return src.credentials;
+      if (src?._credentials) return unwrap(src._credentials);
+      if (src?.credentials) return unwrap(src.credentials);
     }
     // 3. Build from state if available (Drive SDK sometimes exposes these)
     if (this.state?.sessionId) {
