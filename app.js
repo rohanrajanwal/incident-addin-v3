@@ -1798,9 +1798,12 @@ populateContextScreen() {
     const fileName = this._randomFileName('jpg');
 
     // Step 1: Create the MediaFile entity (metadata only — minimal fields per official pattern)
+    // SolutionId must be a valid Geotab-format ID (base64-encoded GUID), not an arbitrary string.
+    // Server's .NET deserializer crashes with GenericException if it can't parse SolutionId as a GUID.
+    // Borrowing the official collision-form add-in's SolutionId until we register our own.
     const entity = {
       name: fileName,
-      solutionId: 'IncidentReport',
+      SolutionId: 'aYnBQxCQMv0-lyIH3F8689Q',
     };
     console.log('[Submit] MediaFile entity:', JSON.stringify(entity));
     const entityId = await new Promise((resolve, reject) =>
@@ -1845,7 +1848,7 @@ populateContextScreen() {
     const entityId = await new Promise((resolve, reject) =>
       this.api.call('Add', {
         typeName: 'MediaFile',
-        entity: { name: fileName, solutionId: 'IncidentReport' }
+        entity: { name: fileName, SolutionId: 'aYnBQxCQMv0-lyIH3F8689Q' }
       }, resolve, reject)
     );
 
