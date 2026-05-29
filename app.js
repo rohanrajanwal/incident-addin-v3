@@ -1905,7 +1905,25 @@ populateContextScreen() {
   },
 
   async uploadVideoFile(blob, name, deviceId, driverId, eventDateTime, exceptionEventId, server, credentials) {
-    const fileName = this._randomFileName('mp4');
+    // Match file extension + Content-Type to the blob's actual format. The server validates that
+    // filename extension and the multipart Content-Type agree — mismatch produces
+    // "ArgumentException: .mp4 requires content type video/mp4". Sources of mismatch:
+    //   - iOS Camera app records .mov (video/quicktime)
+    //   - Android picker may return video/webm or video/3gpp
+    //   - iOS Drive sometimes returns application/octet-stream with no real type info
+    const sourceType = (blob?.type || '').toLowerCase();
+    let ext = 'mp4', mime = 'video/mp4';
+    if (sourceType.includes('quicktime') || sourceType.includes('mov'))      { ext = 'mov';  mime = 'video/quicktime'; }
+    else if (sourceType.includes('webm'))                                    { ext = 'webm'; mime = 'video/webm'; }
+    else if (sourceType.includes('3gpp') || sourceType.includes('3gp'))      { ext = '3gp';  mime = 'video/3gpp'; }
+    else if (sourceType.includes('mp4'))                                     { ext = 'mp4';  mime = 'video/mp4'; }
+    // If unknown/octet-stream, assume mp4 — most common on iOS Drive native uploads.
+
+    // Ensure the blob actually carries the matching Content-Type. FormData uses blob.type as the
+    // multipart part's Content-Type header. If blob.type is empty or wrong, the upload is rejected.
+    const typedBlob = blob.type === mime ? blob : new Blob([blob], { type: mime });
+
+    const fileName = this._randomFileName(ext);
 
     const entityId = await new Promise((resolve, reject) =>
       this.api.call('Add', {
@@ -1926,7 +1944,7 @@ populateContextScreen() {
       const params = { method: 'UploadMediaFile', params: { credentials, mediaFile: { id: entityId } } };
       const formData = new FormData();
       formData.append('JSON-RPC', encodeURIComponent(JSON.stringify(params)));
-      formData.append(fileName, blob, fileName);
+      formData.append(fileName, typedBlob, fileName);
 
       const resp = await fetch(`https://${host}/apiv1`, { method: 'POST', body: formData });
       const text = await resp.text();
