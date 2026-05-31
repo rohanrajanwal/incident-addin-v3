@@ -16,15 +16,25 @@ const app = {
     damageZones: { first: [], third: [] },
     severityFirst: null,
     severityThird: null,
-    ocr: {},
+    // Flat ocr object keeps backward-compat for formatReportText / populateReview / AddInData submission
+    // (which still read ocr.name, ocr.policy, ocr.vin, ocr.plate). New per-doc fields added inline.
+    ocr: {
+      // From Driver's License
+      dlName: '', dlNumber: '', dlDob: '', dlAddress: '',
+      // From Insurance Card — name + policy + vin + plate are legacy keys kept for compat
+      name: '', policy: '', insurer: '', insDates: '',
+      // From Vehicle Registration
+      vin: '', plate: '', makeModel: '', regYear: '', regOwner: ''
+    },
+    // Captured document images (uploaded as MediaFile attachments)
     docLicense: null,
     docInsurance: null,
-    docTag: null,
+    docRegistration: null,
     thirdPartyPhone: { countryCode: '+1', number: '' },
     narrative: '',
     occupancy: { yourVehicle: 1, yourInjuries: null, thirdVehicle: 1, thirdInjuries: null },
     witnesses: { hasWitnesses: null, name: '', phone: { countryCode: '+1', number: '' } },
-    policeReport: { filed: null, document: null, violations: null, citations: null, citationDoc: null },
+    policeReport: { filed: null, document: null, violations: null, citations: null, citationDoc: null, reportNumber: '', officerName: '', badgeNumber: '', citationNumber: '', citationViolations: '' },
     propertyDamageInfo: { damaged: null, photo: null, propertyName: '', address: '', ownerName: '', ownerPhone: { countryCode: '+1', number: '' } },
     context: {},
     aiResults: null,
@@ -369,7 +379,7 @@ const app = {
       window.scrollTo(0, 0);
 
       if (screenId === 'review') this.populateReview();
-      if (screenId === 'context') this.populateContextScreen();
+      if (screenId === 'context') { this.populateContextScreen(); }
       if (screenId === 'narrative') this.initNarrativeScreen();
       if (screenId === 'property-damage') this.initPropertyDamageScreen();
     }
@@ -398,6 +408,15 @@ const app = {
     this.setEl('headerTitle', titles[screenId] || 'Incident Reporting');
   },
 
+  setInjuryFlag(value, btnEl) {
+    this.reportData.answers.anyoneInjured = value;
+    const siblings = btnEl.parentElement.querySelectorAll('.toggle-btn');
+    siblings.forEach(b => b.classList.remove('selected'));
+    btnEl.classList.add('selected');
+    const banner = document.getElementById('injuryBanner');
+    if (banner) banner.style.display = value ? '' : 'none';
+  },
+
   // ---- Qualifying Questions ----
   setAnswer(key, value, btnEl) {
     this.reportData.answers[key] = value;
@@ -407,18 +426,10 @@ const app = {
     siblings.forEach(b => b.classList.remove('selected'));
     btnEl.classList.add('selected');
 
-    // Conditional: when thirdParty = No, auto-select atScene = No and disable
     if (key === 'thirdParty') {
-      const atSceneGroup = document.getElementById('atSceneGroup');
-      if (!value) {
-        this.reportData.answers.atScene = false;
-        atSceneGroup.classList.add('disabled-group');
-        const noBtn = atSceneGroup.querySelectorAll('.toggle-btn')[1];
-        atSceneGroup.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('selected'));
-        noBtn.classList.add('selected');
-      } else {
-        atSceneGroup.classList.remove('disabled-group');
-      }
+      const hitRunGroup = document.getElementById('hitAndRunGroup');
+      if (hitRunGroup) hitRunGroup.style.display = value ? '' : 'none';
+      if (!value) this.reportData.answers.hitAndRun = null;
     }
   },
 
@@ -431,6 +442,16 @@ const app = {
     const show = !!this.reportData.answers.thirdParty;
     const g = document.getElementById('thirdOccupancyGroup');
     if (g) g.style.display = show ? '' : 'none';
+  },
+
+  narrativeBack() {
+    // If no third party, docs screen was skipped — go back to damage-first
+    if (this.reportData.answers.thirdParty) {
+      this.goTo('documents');
+    } else {
+      this._damageFirstFromReview = false;
+      this.goTo('damage-first');
+    }
   },
 
   narrativeContinue() {
@@ -483,25 +504,50 @@ const app = {
   capturePoliceReport() {
     this._captureDocFile('policeDocUpload', 'policeDocPreview', 'app.removePoliceDoc()', (data) => {
       this.reportData.policeReport.document = data;
+      // Mock OCR — extract report #, officer, badge from the police report card
+      this.reportData.policeReport.reportNumber = 'RPT-2026-04827';
+      this.reportData.policeReport.officerName = 'Ofc. M. Williams';
+      this.reportData.policeReport.badgeNumber = '4821';
+      const r = document.getElementById('ocrResultsPolice');
+      if (r) r.style.display = 'block';
+      this.setEl('ocrPoliceReport', this.reportData.policeReport.reportNumber);
+      this.setEl('ocrPoliceOfficer', this.reportData.policeReport.officerName);
+      this.setEl('ocrPoliceBadge', this.reportData.policeReport.badgeNumber);
     });
   },
 
   removePoliceDoc() {
     this.reportData.policeReport.document = null;
+    this.reportData.policeReport.reportNumber = '';
+    this.reportData.policeReport.officerName = '';
+    this.reportData.policeReport.badgeNumber = '';
     document.getElementById('policeDocUpload').style.display = '';
     document.getElementById('policeDocPreview').style.display = 'none';
+    const r = document.getElementById('ocrResultsPolice');
+    if (r) r.style.display = 'none';
   },
 
   captureCitationDoc() {
     this._captureDocFile('citationDocUpload', 'citationDocPreview', 'app.removeCitationDoc()', (data) => {
       this.reportData.policeReport.citationDoc = data;
+      // Mock OCR — extract citation # and violations
+      this.reportData.policeReport.citationNumber = 'CIT-2026-11432';
+      this.reportData.policeReport.citationViolations = 'Following too closely';
+      const r = document.getElementById('ocrResultsCitation');
+      if (r) r.style.display = 'block';
+      this.setEl('ocrCitationNumber', this.reportData.policeReport.citationNumber);
+      this.setEl('ocrCitationViolations', this.reportData.policeReport.citationViolations);
     });
   },
 
   removeCitationDoc() {
     this.reportData.policeReport.citationDoc = null;
+    this.reportData.policeReport.citationNumber = '';
+    this.reportData.policeReport.citationViolations = '';
     document.getElementById('citationDocUpload').style.display = '';
     document.getElementById('citationDocPreview').style.display = 'none';
+    const r = document.getElementById('ocrResultsCitation');
+    if (r) r.style.display = 'none';
   },
 
   // ---- Property Damage ----
@@ -840,29 +886,89 @@ const app = {
     input.click();
   },
 
-  // ---- Extra document captures (license, insurance, tag) ----
-  captureExtraDoc(type) {
-    const map = {
-      license:   { key: 'docLicense',   box: 'docLicenseBox',   preview: 'docLicensePreview',   rm: "app.removeExtraDoc('license')" },
-      insurance: { key: 'docInsurance', box: 'docInsuranceBox', preview: 'docInsurancePreview', rm: "app.removeExtraDoc('insurance')" },
-      tag:       { key: 'docTag',       box: 'docTagBox',       preview: 'docTagPreview',       rm: "app.removeExtraDoc('tag')" }
-    }[type];
-    if (!map) return;
-    this._captureDocFile(map.box, map.preview, map.rm, (data) => {
-      this.reportData[map.key] = data;
+  // ---- Document capture with OCR (license, insurance, registration) ----
+  // Unified pipeline: capture photo → store image → run type-specific OCR → render extracted fields.
+  _docMap: {
+    license:      { key: 'docLicense',      box: 'docLicenseBox',      preview: 'docLicensePreview',      results: 'ocrResultsLicense' },
+    insurance:    { key: 'docInsurance',    box: 'docInsuranceBox',    preview: 'docInsurancePreview',    results: 'ocrResultsInsurance' },
+    registration: { key: 'docRegistration', box: 'docRegistrationBox', preview: 'docRegistrationPreview', results: 'ocrResultsRegistration' }
+  },
+
+  captureDocOCR(type) {
+    const m = this._docMap[type];
+    if (!m) return;
+    this._captureDocFile(m.box, m.preview, `app.removeDocOCR('${type}')`, async (data) => {
+      this.reportData[m.key] = data;
+      await this._runDocOCR(type, data);
     });
   },
 
-  removeExtraDoc(type) {
-    const map = {
-      license:   { key: 'docLicense',   box: 'docLicenseBox',   preview: 'docLicensePreview' },
-      insurance: { key: 'docInsurance',  box: 'docInsuranceBox', preview: 'docInsurancePreview' },
-      tag:       { key: 'docTag',        box: 'docTagBox',       preview: 'docTagPreview' }
-    }[type];
-    if (!map) return;
-    this.reportData[map.key] = null;
-    document.getElementById(map.box).style.display = '';
-    document.getElementById(map.preview).style.display = 'none';
+  removeDocOCR(type) {
+    const m = this._docMap[type];
+    if (!m) return;
+    this.reportData[m.key] = null;
+    document.getElementById(m.box).style.display = '';
+    document.getElementById(m.preview).style.display = 'none';
+    const r = document.getElementById(m.results);
+    if (r) r.style.display = 'none';
+    this._clearDocFields(type);
+  },
+
+  async _runDocOCR(type, imageData) {
+    // Mock OCR per document type. Replace with real GenAI Gateway call in Phase 3.
+    const mock = {
+      license: {
+        dlName: 'Robert Johnson',
+        dlNumber: 'D1234-5678-9012',
+        dlDob: '1985-03-22',
+        dlAddress: '742 Evergreen Terrace, Springfield, IL'
+      },
+      insurance: {
+        name: 'Robert Johnson',
+        policy: 'POL-789456123',
+        insurer: 'State Farm',
+        insDates: '01/2026 — 01/2027'
+      },
+      registration: {
+        vin: '1FTFW1ET5DFC10042',
+        plate: 'ABC 1234',
+        makeModel: '2022 Ford F-150 SuperCrew',
+        regYear: '2022',
+        regOwner: 'Robert Johnson'
+      }
+    }[type] || {};
+    // Merge into flat ocr object (preserves backward compat for formatReportText / AddInData)
+    Object.assign(this.reportData.ocr, mock);
+    this._renderDocFields(type);
+  },
+
+  _renderDocFields(type) {
+    const r = document.getElementById(this._docMap[type].results);
+    if (r) r.style.display = 'block';
+    const o = this.reportData.ocr;
+    if (type === 'license') {
+      this.setEl('ocrDlName', o.dlName || '—');
+      this.setEl('ocrDlNumber', o.dlNumber || '—');
+      this.setEl('ocrDlDob', o.dlDob || '—');
+      this.setEl('ocrDlAddress', o.dlAddress || '—');
+    } else if (type === 'insurance') {
+      this.setEl('ocrInsName', o.name || '—');
+      this.setEl('ocrInsPolicy', o.policy || '—');
+      this.setEl('ocrInsCompany', o.insurer || '—');
+      this.setEl('ocrInsDates', o.insDates || '—');
+    } else if (type === 'registration') {
+      this.setEl('ocrRegVin', o.vin || '—');
+      this.setEl('ocrRegPlate', o.plate || '—');
+      this.setEl('ocrRegMakeModel', o.makeModel || '—');
+      this.setEl('ocrRegOwner', o.regOwner || '—');
+    }
+  },
+
+  _clearDocFields(type) {
+    const o = this.reportData.ocr;
+    if (type === 'license') { o.dlName = ''; o.dlNumber = ''; o.dlDob = ''; o.dlAddress = ''; }
+    else if (type === 'insurance') { o.name = ''; o.policy = ''; o.insurer = ''; o.insDates = ''; }
+    else if (type === 'registration') { o.vin = ''; o.plate = ''; o.makeModel = ''; o.regYear = ''; o.regOwner = ''; }
   },
 
   // ---- Photo Capture ----
@@ -980,6 +1086,11 @@ const app = {
   },
 
   // ---- AI Photo Analysis ----
+  // Track whether we entered a damage screen from the linear flow vs from edit-review,
+  // so the Back/Done buttons can route correctly.
+  _damageFirstFromReview: false,
+  _damageThirdFromReview: false,
+
   async analyzeYoursAndContinue() {
     const hasPhotos = this.reportData.photosYours.some(p => p);
 
@@ -997,10 +1108,25 @@ const app = {
       document.getElementById('aiAnalysisStatusYours').style.display = 'none';
     }
 
+    // New flow: photos → combined damage+severity screen → photos-third (or documents)
+    this._damageFirstFromReview = false;
+    this.goTo('damage-first');
+  },
+
+  damageFirstBack() {
+    this.goTo(this._damageFirstFromReview ? 'review' : 'photos-yours');
+  },
+
+  damageFirstDone() {
+    if (this._damageFirstFromReview) {
+      this.goTo('review');
+      return;
+    }
     if (this.reportData.answers.thirdParty) {
       this.goTo('photos-third');
     } else {
-      this.goTo('documents');
+      // No third party → skip photos-third / damage-third / documents (all 3P-specific)
+      this.goTo('narrative');
     }
   },
 
@@ -1012,7 +1138,6 @@ const app = {
 
       try {
         const results = await this.callAIAnalysis(this.reportData.photosThird);
-        // Merge third-party specific results
         if (this.reportData.aiResults) {
           if (results.damageZones && results.damageZones.third) {
             this.reportData.aiResults.damageZones.third = results.damageZones.third;
@@ -1031,6 +1156,19 @@ const app = {
       document.getElementById('aiAnalysisStatusThird').style.display = 'none';
     }
 
+    this._damageThirdFromReview = false;
+    this.goTo('damage-third');
+  },
+
+  damageThirdBack() {
+    this.goTo(this._damageThirdFromReview ? 'review' : 'photos-third');
+  },
+
+  damageThirdDone() {
+    if (this._damageThirdFromReview) {
+      this.goTo('review');
+      return;
+    }
     this.goTo('documents');
   },
 
@@ -1093,21 +1231,23 @@ const app = {
       });
     }
 
-    // Auto-select severity (first party)
+    // Auto-select severity (first party) — now lives inside the combined damage-first screen
     if (results.severityFirst) {
       this.reportData.severityFirst = results.severityFirst;
-      document.querySelectorAll('#screen-severity-first .severity-option').forEach(opt => {
-        if (opt.querySelector('h4').textContent === results.severityFirst) {
+      document.querySelectorAll('#severityOptionsFirst .severity-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.querySelector('h4')?.textContent === results.severityFirst) {
           opt.classList.add('selected');
         }
       });
     }
 
-    // Auto-select severity (third party)
+    // Auto-select severity (third party) — now lives inside the combined damage-third screen
     if (results.severityThird) {
       this.reportData.severityThird = results.severityThird;
-      document.querySelectorAll('#screen-severity-third .severity-option').forEach(opt => {
-        if (opt.querySelector('h4').textContent === results.severityThird) {
+      document.querySelectorAll('#severityOptionsThird .severity-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.querySelector('h4')?.textContent === results.severityThird) {
           opt.classList.add('selected');
         }
       });
@@ -1129,6 +1269,17 @@ const app = {
 
   // ---- Edit-from-review flow ----
   editFromReview(screenId) {
+    // Severity is now part of the combined damage screen — route accordingly
+    if (screenId === 'damage-first' || screenId === 'severity-first') {
+      this._damageFirstFromReview = true;
+      this.goTo('damage-first');
+      return;
+    }
+    if (screenId === 'damage-third' || screenId === 'severity-third') {
+      this._damageThirdFromReview = true;
+      this.goTo('damage-third');
+      return;
+    }
     this.goTo(screenId);
   },
 
@@ -1210,81 +1361,17 @@ const app = {
   // ---- Documents navigation ----
   documentsBack() {
     if (this.reportData.answers.thirdParty) {
-      this.goTo('photos-third');
+      this._damageThirdFromReview = false;
+      this.goTo('damage-third');
     } else {
-      this.goTo('photos-yours');
+      this._damageFirstFromReview = false;
+      this.goTo('damage-first');
     }
   },
 
-  // ---- Document OCR ----
-  captureDocument() {
-    this._captureDocFile('ocrDocUpload', 'ocrDocPreview', 'app.removeDocument()', async (data) => {
-      this.reportData.ocr.documentImage = data;
-      await this.processDocumentOCR(data);
-    });
-  },
+  // Old captureDocument/removeDocument/processDocumentOCR removed — replaced by captureDocOCR/removeDocOCR/_runDocOCR above.
 
-  removeDocument() {
-    this.reportData.ocr.documentImage = null;
-    document.getElementById('ocrDocUpload').style.display = '';
-    document.getElementById('ocrDocPreview').style.display = 'none';
-    document.getElementById('ocrResults').style.display = 'none';
-  },
-
-  async processDocumentOCR(imageData) {
-    // In production, send to AI backend for OCR
-    // For now, use mock data or AI results
-    let ocrData;
-    if (this.reportData.aiResults) {
-      ocrData = {
-        name: 'Robert Johnson',
-        policy: 'POL-789456123',
-        vin: this.reportData.aiResults.thirdPartyVIN || '1FTFW1ET5DFC10042',
-        plate: this.reportData.aiResults.thirdPartyPlate || 'ABC 1234',
-        confidence: this.reportData.aiResults.confidenceScores || {}
-      };
-    } else {
-      ocrData = {
-        name: 'Robert Johnson',
-        policy: 'POL-789456123',
-        vin: '1FTFW1ET5DFC10042',
-        plate: 'ABC 1234',
-        confidence: { name: 0.95, policy: 0.92, vin: 0.67, plate: 0.91 }
-      };
-    }
-
-    this.reportData.ocr = { ...this.reportData.ocr, ...ocrData };
-    this.renderOCRResults(ocrData);
-  },
-
-  renderOCRResults(data) {
-    const container = document.getElementById('ocrResults');
-    container.style.display = 'block';
-
-    this.setEl('ocrName', data.name);
-    this.setEl('ocrPolicy', data.policy);
-    this.setEl('ocrVin', data.vin);
-    this.setEl('ocrPlate', data.plate);
-
-    // Update confidence badges
-    this.updateConfBadge('ocrNameConf', data.confidence.name);
-    this.updateConfBadge('ocrPolicyConf', data.confidence.policy);
-    this.updateConfBadge('ocrVinConf', data.confidence.vin);
-    this.updateConfBadge('ocrPlateConf', data.confidence.plate);
-  },
-
-  updateConfBadge(elementId, score) {
-    const el = document.getElementById(elementId);
-    if (!el || !score) return;
-    const pct = Math.round(score * 100);
-    if (score >= 0.75) {
-      el.className = 'confidence-badge high';
-      el.innerHTML = `&#x2714; ${pct}%`;
-    } else {
-      el.className = 'confidence-badge low';
-      el.innerHTML = `&#x26A0; ${pct}%`;
-    }
-  },
+  // Old renderOCRResults/updateConfBadge removed — replaced by _renderDocFields above.
 
   // ---- Telemetry & Context ----
   async _fetchEventContext(event) {
@@ -1429,6 +1516,12 @@ populateContextScreen() {
     }
 
     this.setEl('revThirdParty', isThirdParty ? 'Yes' : 'No');
+    // Hit-and-run only shown when thirdParty=Yes
+    const harRow = document.getElementById('revRowHitAndRun');
+    if (harRow) harRow.style.display = isThirdParty ? '' : 'none';
+    this.setEl('revHitAndRun', a.hitAndRun === null || a.hitAndRun === undefined ? '—' : (a.hitAndRun ? 'Yes' : 'No'));
+    this.setEl('revDriveable', a.driveable || '—');
+    this.setEl('revInjuries', a.anyoneInjured === null || a.anyoneInjured === undefined ? '—' : (a.anyoneInjured ? 'Yes — 911 alert flagged' : 'No'));
     this.setEl('revFirstDamage', d.damageZones.first.join(', ') || '—');
     this.setEl('revSeverityFirst', d.severityFirst || '—');
     this.setEl('revThirdType', a.thirdPartyType || '—');
@@ -1476,6 +1569,23 @@ populateContextScreen() {
       const el = document.getElementById(id);
       if (el) el.style.display = pd.damaged ? '' : 'none';
     });
+
+    // Narrative preview
+    const narrative = (d.narrative || '').trim();
+    this.setEl('revNarrative', narrative || '— (none provided)');
+
+    // Documents captured summary
+    const docs = [];
+    if (d.docLicense) docs.push("Driver's License");
+    if (d.docInsurance) docs.push('Insurance Card');
+    if (d.docRegistration) docs.push('Vehicle Registration');
+    if (d.policeReport.document) docs.push('Police Report');
+    if (d.policeReport.citationDoc) docs.push('Citation');
+    if (d.propertyDamageInfo.photo) docs.push('Property Damage Photo');
+    if (d.sceneVideo) docs.push('Scene Video');
+    const docsSection = document.getElementById('revSectionDocs');
+    if (docsSection) docsSection.style.display = docs.length ? '' : 'none';
+    this.setEl('revDocsCaptured', docs.length ? docs.join(' ✓ ') + ' ✓' : '—');
 
     // Show/hide third-party rows
     const thirdRows = ['revRowThirdDamage', 'revRowThirdSeverity', 'revRowThirdType'];
@@ -1635,7 +1745,7 @@ populateContextScreen() {
       ...this.reportData.photosThird.map((d, i) => d ? { data: d, name: thirdLabels[i] } : null),
       this.reportData.docLicense               && { data: this.reportData.docLicense,                  name: 'ThirdParty_DriversLicense' },
       this.reportData.docInsurance             && { data: this.reportData.docInsurance,                name: 'ThirdParty_InsuranceCard' },
-      this.reportData.docTag                   && { data: this.reportData.docTag,                      name: 'ThirdParty_VehicleTag' },
+      this.reportData.docRegistration           && { data: this.reportData.docRegistration,             name: 'ThirdParty_Registration' },
       this.reportData.policeReport.document    && { data: this.reportData.policeReport.document,       name: 'PoliceReport_Document' },
       this.reportData.policeReport.citationDoc && { data: this.reportData.policeReport.citationDoc,    name: 'PoliceReport_Citation' },
       this.reportData.propertyDamageInfo.photo && { data: this.reportData.propertyDamageInfo.photo,    name: 'PropertyDamage_Photo' },
@@ -2081,11 +2191,10 @@ populateContextScreen() {
     lines.push('Q: Does the collision involve a third party driver?');
     lines.push(`A: ${yn(d.answers.thirdParty)}`);
     if (d.answers.thirdParty) {
-      lines.push('Q: Is the third party driver at the scene?');
-      lines.push(`A: ${yn(d.answers.atScene)}`);
+      lines.push('Q: Was this a hit-and-run?');
+      lines.push(`A: ${yn(d.answers.hitAndRun)}`);
     }
-    lines.push('Q: Is there any damage to property (buildings, fences, etc.)?');
-    lines.push(`A: ${yn(d.answers.propertyDamage)}`);
+    lines.push(`Vehicle driveable: ${d.answers.driveable || 'Not specified'}`);
     lines.push('');
 
     lines.push('— Damage: Your Vehicle —');
@@ -2110,7 +2219,7 @@ populateContextScreen() {
       const docs = [];
       if (d.docLicense) docs.push("Driver's License");
       if (d.docInsurance) docs.push('Insurance Card');
-      if (d.docTag) docs.push('Vehicle Tag / Plate');
+      if (d.docRegistration) docs.push('Vehicle Registration');
       lines.push('— Third Party Driver Info —');
       lines.push(`Name: ${d.ocr.name || '—'}`);
       lines.push(`Insurance policy #: ${d.ocr.policy || '—'}`);
@@ -2147,8 +2256,12 @@ populateContextScreen() {
     lines.push('— Police Report —');
     if (d.policeReport.filed) {
       lines.push(`Report filed: Yes${d.policeReport.document ? ' (document attached)' : ''}`);
+      if (d.policeReport.reportNumber) lines.push(`Report #: ${d.policeReport.reportNumber}`);
+      if (d.policeReport.officerName) lines.push(`Officer: ${d.policeReport.officerName}${d.policeReport.badgeNumber ? ' (Badge #' + d.policeReport.badgeNumber + ')' : ''}`);
       lines.push(`Violations cited: ${yn(d.policeReport.violations)}`);
       lines.push(`Citation issued: ${yn(d.policeReport.citations)}${d.policeReport.citationDoc ? ' (document attached)' : ''}`);
+      if (d.policeReport.citationNumber) lines.push(`Citation #: ${d.policeReport.citationNumber}`);
+      if (d.policeReport.citationViolations) lines.push(`Violation details: ${d.policeReport.citationViolations}`);
     } else {
       lines.push(`Report filed: ${yn(d.policeReport.filed)}`);
     }
@@ -2168,7 +2281,7 @@ populateContextScreen() {
 
     const photoCountYours = (d.photosYours || []).filter(Boolean).length;
     const photoCountThird = (d.photosThird || []).filter(Boolean).length;
-    const docCount = [d.docLicense, d.docInsurance, d.docTag].filter(Boolean).length;
+    const docCount = [d.docLicense, d.docInsurance, d.docRegistration].filter(Boolean).length;
     const policeCount = [d.policeReport.document, d.policeReport.citationDoc].filter(Boolean).length;
     lines.push('— Attachments —');
     lines.push(`Your vehicle photos: ${photoCountYours}`);
