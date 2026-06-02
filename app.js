@@ -175,8 +175,6 @@ const app = {
       const now = new Date();
       const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
-      const COLLISION_RULE_NAMES = ['Possible collision', 'Major Collision'];
-
       // Fetch rules, events, and existing reports in parallel
       const [allRules, events, existingReports] = await Promise.all([
         new Promise((resolve) =>
@@ -200,9 +198,17 @@ const app = {
         )
       ]);
 
-      // Build set of collision rule IDs by matching rule names
+      // Build a map of ruleId → full rule object (for name lookup)
+      const ruleMap = {};
+      (allRules || []).forEach(r => { ruleMap[r.id] = r; });
+
+      // Identify collision/incident rules by name (case-insensitive substring match)
+      const isCollisionRule = (r) => {
+        const n = (r.name || '').toLowerCase();
+        return n.includes('collision') || n.includes('accident') || n.includes('crash') || n.includes('impact');
+      };
       const collisionRuleIds = new Set(
-        (allRules || []).filter(r => COLLISION_RULE_NAMES.includes(r.name)).map(r => r.id)
+        (allRules || []).filter(isCollisionRule).map(r => r.id)
       );
       console.log('[Incidents] collision rule IDs:', [...collisionRuleIds]);
       console.log('[Incidents] total events fetched:', (events || []).length);
@@ -215,8 +221,15 @@ const app = {
           .filter(Boolean)
       );
 
-      // Filter to collision rules only (by ID, not name — name may not be on event objects)
+      // Filter to collision rules only, and enrich each event with the full rule name
+      // (ExceptionEvent responses only include rule.id, not rule.name)
       const collisionEvents = (events || []).filter(e => collisionRuleIds.has(e.rule?.id));
+      collisionEvents.forEach(e => {
+        const fullRule = ruleMap[e.rule?.id];
+        if (fullRule && e.rule) {
+          e.rule.name = fullRule.name;
+        }
+      });
 
       // Cache events for context lookup when starting a report
       this._eventsCache = {};
