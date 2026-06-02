@@ -408,15 +408,6 @@ const app = {
     this.setEl('headerTitle', titles[screenId] || 'Incident Reporting');
   },
 
-  setInjuryFlag(value, btnEl) {
-    this.reportData.answers.anyoneInjured = value;
-    const siblings = btnEl.parentElement.querySelectorAll('.toggle-btn');
-    siblings.forEach(b => b.classList.remove('selected'));
-    btnEl.classList.add('selected');
-    const banner = document.getElementById('injuryBanner');
-    if (banner) banner.style.display = value ? '' : 'none';
-  },
-
   // ---- Qualifying Questions ----
   setAnswer(key, value, btnEl) {
     this.reportData.answers[key] = value;
@@ -445,12 +436,11 @@ const app = {
   },
 
   narrativeBack() {
-    // If no third party, docs screen was skipped — go back to damage-first
+    // If no third party, docs was skipped — go back to your photos
     if (this.reportData.answers.thirdParty) {
       this.goTo('documents');
     } else {
-      this._damageFirstFromReview = false;
-      this.goTo('damage-first');
+      this.goTo('photos-yours');
     }
   },
 
@@ -973,17 +963,10 @@ const app = {
 
   // ---- Photo Capture ----
   showPhotoMenu(party, index) {
-    if (this.api?.mobile?.exists()) {
-      // On Geotab Drive mobile: show our menu — "Take Photo" uses native camera API
-      // (no double-menu because takePicture() doesn't trigger an OS sheet)
-      this._showDocMenu(
-        () => this._triggerPhotoInput(party, index, true),
-        () => this._triggerPhotoInput(party, index, false)
-      );
-    } else {
-      // Desktop / dev: go straight to file input
-      this._triggerPhotoInput(party, index, false);
-    }
+    // Always use the OS-native file picker (Photo Library / Take Photo / Choose File).
+    // Bypasses both our custom menu AND the Drive SDK's "Adding Image..." modal.
+    // The OS picker handles camera + library in one menu natively.
+    this._triggerPhotoInput(party, index, false);
   },
 
   capturePhotoFromCamera(party, index) {
@@ -1108,26 +1091,23 @@ const app = {
       document.getElementById('aiAnalysisStatusYours').style.display = 'none';
     }
 
-    // New flow: photos → combined damage+severity screen → photos-third (or documents)
-    this._damageFirstFromReview = false;
-    this.goTo('damage-first');
-  },
-
-  damageFirstBack() {
-    this.goTo(this._damageFirstFromReview ? 'review' : 'photos-yours');
-  },
-
-  damageFirstDone() {
-    if (this._damageFirstFromReview) {
-      this.goTo('review');
-      return;
-    }
+    // Damage + severity are AI-filled in the background and only surfaced if the
+    // driver clicks Edit on the Review screen. Skip the damage screen in the main flow.
     if (this.reportData.answers.thirdParty) {
       this.goTo('photos-third');
     } else {
-      // No third party → skip photos-third / damage-third / documents (all 3P-specific)
+      // No third party → also skip photos-third + documents (which are 3P-specific)
       this.goTo('narrative');
     }
+  },
+
+  damageFirstBack() {
+    // This screen is only reachable from Review's Edit link — always go back to review
+    this.goTo('review');
+  },
+
+  damageFirstDone() {
+    this.goTo('review');
   },
 
   async analyzeThirdAndContinue() {
@@ -1156,20 +1136,16 @@ const app = {
       document.getElementById('aiAnalysisStatusThird').style.display = 'none';
     }
 
-    this._damageThirdFromReview = false;
-    this.goTo('damage-third');
+    // Same as above — damage/severity edited only via Review. Go straight to docs.
+    this.goTo('documents');
   },
 
   damageThirdBack() {
-    this.goTo(this._damageThirdFromReview ? 'review' : 'photos-third');
+    this.goTo('review');
   },
 
   damageThirdDone() {
-    if (this._damageThirdFromReview) {
-      this.goTo('review');
-      return;
-    }
-    this.goTo('documents');
+    this.goTo('review');
   },
 
   async callAIAnalysis(photos) {
@@ -1292,12 +1268,14 @@ const app = {
     document.querySelectorAll('.damage-zone').forEach(zoneEl => {
       zoneEl.addEventListener('click', () => {
         const zoneName = zoneEl.getAttribute('data-zone');
-        // Find the matching chip button
-        const chip = document.querySelector(`#damageChipsFirst .zone-chip[onclick*="${zoneName}"]`);
+        // data-party tells us which screen this SVG belongs to (defaults to 'first')
+        const party = zoneEl.getAttribute('data-party') || 'first';
+        const chipContainerId = party === 'third' ? 'damageChipsThird' : 'damageChipsFirst';
+        const chip = document.querySelector(`#${chipContainerId} .zone-chip[onclick*="${zoneName}"]`);
         if (chip) {
-          this.toggleZone('first', zoneName, chip);
-          // Sync SVG highlight
-          zoneEl.classList.toggle('selected', this.reportData.damageZones.first.includes(zoneName));
+          this.toggleZone(party, zoneName, chip);
+          // Sync SVG highlight on the clicked zone only
+          zoneEl.classList.toggle('selected', this.reportData.damageZones[party].includes(zoneName));
         }
       });
     });
@@ -1360,12 +1338,11 @@ const app = {
 
   // ---- Documents navigation ----
   documentsBack() {
+    // Damage screens are hidden from main flow — go back to the photos screen
     if (this.reportData.answers.thirdParty) {
-      this._damageThirdFromReview = false;
-      this.goTo('damage-third');
+      this.goTo('photos-third');
     } else {
-      this._damageFirstFromReview = false;
-      this.goTo('damage-first');
+      this.goTo('photos-yours');
     }
   },
 
@@ -1521,7 +1498,6 @@ populateContextScreen() {
     if (harRow) harRow.style.display = isThirdParty ? '' : 'none';
     this.setEl('revHitAndRun', a.hitAndRun === null || a.hitAndRun === undefined ? '—' : (a.hitAndRun ? 'Yes' : 'No'));
     this.setEl('revDriveable', a.driveable || '—');
-    this.setEl('revInjuries', a.anyoneInjured === null || a.anyoneInjured === undefined ? '—' : (a.anyoneInjured ? 'Yes — 911 alert flagged' : 'No'));
     this.setEl('revFirstDamage', d.damageZones.first.join(', ') || '—');
     this.setEl('revSeverityFirst', d.severityFirst || '—');
     this.setEl('revThirdType', a.thirdPartyType || '—');
