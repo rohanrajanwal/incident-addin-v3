@@ -146,7 +146,7 @@
     </div>
 
     <h2 class="section-title">Capture Photos of Your Vehicle & Scene</h2>
-    <p class="section-subtitle">Take photos of your vehicle damage and the incident scene.</p>
+    <p class="section-subtitle">Take clear, well-lit photos from each angle. Show the full side of the vehicle in each shot. For Damage Close-up, get within arm's reach of the damage so details are visible for AI analysis.</p>
 
     <div class="photo-grid" id="photoGridYours">
       <div class="photo-slot" onclick="app.showPhotoMenu('yours',0)">
@@ -198,7 +198,7 @@
     </div>
   </div>
 
-  <!-- ==================== SCREEN 6b: Photos — Third Party Vehicle ==================== -->
+  <!-- ==================== SCREEN 6b: Photos — 3rd Party Vehicle ==================== -->
   <div class="screen" id="screen-photos-third">
     <div class="progress-bar">
       <div class="progress-icon">
@@ -207,8 +207,8 @@
       <span>35% Complete</span>
     </div>
 
-    <h2 class="section-title">Capture Photos of Third Party Vehicle</h2>
-    <p class="section-subtitle">Take photos of the other driver's vehicle damage.</p>
+    <h2 class="section-title">Capture Photos of 3rd Party Vehicle</h2>
+    <p class="section-subtitle">Take clear, well-lit photos from each angle. Show the full side of the vehicle in each shot. For Damage Close-up, get within arm's reach of the damage so details are visible for AI analysis.</p>
 
     <div class="photo-grid" id="photoGridThird">
       <div class="photo-slot" onclick="app.showPhotoMenu('third',0)">
@@ -328,7 +328,7 @@
   <!-- severity-first kept as alias so editFromReview still works -->
   <div class="screen" id="screen-severity-first" style="display:none"></div>
 
-  <!-- ==================== SCREEN 9: Third Party Vehicle — Damage & Severity (combined) ==================== -->
+  <!-- ==================== SCREEN 9: 3rd Party Vehicle — Damage & Severity (combined) ==================== -->
   <div class="screen" id="screen-damage-third">
     <div class="progress-bar">
       <div class="progress-icon">
@@ -337,7 +337,7 @@
       <span>55% Complete</span>
     </div>
 
-    <h2 class="section-title">Third Party Vehicle Damage</h2>
+    <h2 class="section-title">3rd Party Vehicle Damage</h2>
     <p class="section-subtitle">Select damaged areas and severity. <span class="ai-badge">AI Suggested</span></p>
 
     <div class="damage-diagram">
@@ -419,7 +419,7 @@
       <span>65% Complete</span>
     </div>
 
-    <h2 class="section-title">Third Party Documents</h2>
+    <h2 class="section-title">3rd Party Documents</h2>
     <p class="section-subtitle">Capture the third party's documents. AI will automatically extract key information.</p>
 
     <!-- Insurance Card first — most critical for filing a claim (policy # + insurer) -->
@@ -482,7 +482,7 @@
 
     <div class="optional-section">
       <div class="optional-section-header" onclick="app.toggleSection('thirdPartyContact')">
-        <span class="optional-label">Third Party Driver Contact Info</span>
+        <span class="optional-label">3rd Party Driver Contact Info</span>
         <span class="optional-tag">Optional</span>
         <svg id="thirdPartyContactChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;transition:transform 0.2s;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
@@ -874,7 +874,7 @@
         <span class="value"><span class="verified-icon">&#x2714;</span> <span id="revLocation">Interstate 78, MM 47</span></span>
       </div>
       <div class="review-row">
-        <span class="label">Third Party</span>
+        <span class="label">3rd Party</span>
         <span class="value" id="revThirdParty">Yes</span>
       </div>
       <div class="review-row" id="revRowHitAndRun" style="display:none">
@@ -916,7 +916,7 @@
     </div>
 
     <div class="review-section" id="revSectionThirdInfo">
-      <h3><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> Third Party Info</h3>
+      <h3><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> 3rd Party Info</h3>
       <div class="review-row">
         <span class="label">Name</span>
         <span class="value" id="revName">--</span>
@@ -1023,9 +1023,9 @@
 
     <div class="review-section">
       <h3><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Description</h3>
-      <div class="review-row">
-        <span class="value" id="revNarrative" style="font-size:13px;line-height:1.5;color:var(--text-secondary);max-height:60px;overflow:hidden;text-overflow:ellipsis">—</span>
-        <a class="review-edit-link" onclick="app.editFromReview('narrative')">Edit</a>
+      <div style="padding:4px 0;display:flex;gap:8px;align-items:flex-start">
+        <span id="revNarrative" style="flex:1;font-size:13px;line-height:1.5;color:var(--text-secondary);text-align:left;max-height:80px;overflow:hidden;text-overflow:ellipsis">—</span>
+        <a class="review-edit-link" onclick="app.editFromReview('narrative')" style="flex-shrink:0">Edit</a>
       </div>
     </div>
 

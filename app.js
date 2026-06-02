@@ -267,12 +267,38 @@ const app = {
     }
   },
 
+  // Classify a Geotab rule name into a severity tier for the badge.
+  // Geotab's collision rules typically include "Major Collision", "Minor Collision",
+  // "Possible Collision", "Near Collision" / "Near Miss" in the name.
+  _classifyIncident(ruleName) {
+    const r = (ruleName || '').toLowerCase();
+    if (r.includes('major'))                                 return { label: 'Major Collision',    cls: 'severity-major' };
+    if (r.includes('minor'))                                 return { label: 'Minor Collision',    cls: 'severity-minor' };
+    if (r.includes('near') || r.includes('miss'))            return { label: 'Near Collision',     cls: 'severity-near' };
+    if (r.includes('possible') || r.includes('collision'))   return { label: 'Possible Collision', cls: 'severity-possible' };
+    if (r.includes('harsh') && r.includes('brak'))           return { label: 'Harsh Braking',      cls: 'severity-possible' };
+    if (r.includes('accident'))                              return { label: 'Accident Event',     cls: 'severity-major' };
+    return { label: ruleName || 'Incident', cls: 'severity-default' };
+  },
+
+  // Geotab event IDs are long URL-safe base64 strings; show the first 8 chars
+  // (same approach as git short hashes — enough to disambiguate events at a glance).
+  _shortEventId(id) {
+    if (!id) return '';
+    // Strip leading 'a' that Geotab prepends to most entity IDs, then take 8 chars
+    const trimmed = id.startsWith('a') ? id.slice(1) : id;
+    return trimmed.slice(0, 8);
+  },
+
   buildIncidentCard(event, isCompleted) {
     const ruleName = event.rule?.name || 'Incident';
+    const severity = this._classifyIncident(ruleName);
     const date = new Date(event.activeFrom);
     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    // Include seconds — multiple accelerometer events can occur in the same minute
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
     const vehicleName = event.device?.name || this.state?.device?.name || '';
+    const shortId = this._shortEventId(event.id);
 
     const badge = isCompleted
       ? '<span class="badge completed">Completed</span>'
@@ -282,6 +308,7 @@ const app = {
 
     const calSvg = `<svg class="meta-svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
     const truckSvg = `<svg class="meta-svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
+    const hashSvg = `<svg class="meta-svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`;
 
     const continueBtn = isCompleted ? '' : `
       <hr class="card-divider">
@@ -292,10 +319,10 @@ const app = {
     div.innerHTML = `
       <div class="card-header">
         <div class="card-icon collision">${svgIcon}</div>
-        <h3 style="flex:1">${this._escHtml(ruleName)}</h3>
+        <h3 style="flex:1;line-height:1.3">${this._escHtml(severity.label)}</h3>
         ${badge}
       </div>
-      <p class="description">Exception event detected by Geotab</p>
+      <p class="description" style="font-size:12px;color:var(--text-muted);margin:2px 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">Event ${shortId}</p>
       <p class="meta-line">${calSvg} ${dateStr} at ${timeStr}</p>
       ${vehicleName ? `<p class="meta-line">${truckSvg} ${this._escHtml(vehicleName)}</p>` : ''}
       ${continueBtn}`;
@@ -556,9 +583,9 @@ const app = {
     // Pre-fill address from GPS context if available
     const loc = this.reportData.context;
     const addrEl = document.getElementById('propertyAddress');
-    if (addrEl && loc.address && !addrEl.value) {
-      addrEl.value = loc.address;
-      this.reportData.propertyDamageInfo.address = loc.address;
+    if (addrEl && loc.locationStr && !addrEl.value) {
+      addrEl.value = loc.locationStr;
+      this.reportData.propertyDamageInfo.address = loc.locationStr;
     }
   },
 
@@ -1398,16 +1425,22 @@ const app = {
       this.reportData.context.longitude = closest.longitude;
       this.reportData.context.speedKmh  = closest.speed; // km/h
 
-      // Estimate g-force from speed change across event boundary
-      const before = sorted.filter(l => new Date(l.dateTime) <= eventTime);
-      const after  = sorted.filter(l => new Date(l.dateTime) >  eventTime);
-      if (before.length && after.length) {
-        const b = before[before.length - 1], a = after[0];
-        const dtSec = (new Date(a.dateTime) - new Date(b.dateTime)) / 1000;
-        if (dtSec > 0) {
-          const dvMs = (b.speed - a.speed) / 3.6; // Δv in m/s
-          const g = Math.abs(dvMs / (dtSec * 9.81));
-          if (g > 0.05) this.reportData.context.gForce = g;
+      // G-Force: ExceptionEvent.activeReason sometimes contains the peak g-force value.
+      // Primary: read it from the event directly if available (set in the caller).
+      // Fallback: estimate from speed delta between the LogRecord just before and just after the event.
+      // This estimate is rough — it depends on GPS polling frequency (~every 1-5s) and accuracy.
+      // Real accelerometer data lives in DebugRecord (high-freq ~0.1s) but requires separate queries.
+      if (!this.reportData.context.gForce) {
+        const before = sorted.filter(l => new Date(l.dateTime) <= eventTime);
+        const after  = sorted.filter(l => new Date(l.dateTime) >  eventTime);
+        if (before.length && after.length) {
+          const b = before[before.length - 1], a = after[0];
+          const dtSec = (new Date(a.dateTime) - new Date(b.dateTime)) / 1000;
+          if (dtSec > 0) {
+            const dvMs = (b.speed - a.speed) / 3.6; // Δv in m/s
+            const g = Math.abs(dvMs / (dtSec * 9.81));
+            if (g > 0.05) this.reportData.context.gForce = parseFloat(g.toFixed(2));
+          }
         }
       }
 
@@ -1561,7 +1594,12 @@ populateContextScreen() {
     if (d.sceneVideo) docs.push('Scene Video');
     const docsSection = document.getElementById('revSectionDocs');
     if (docsSection) docsSection.style.display = docs.length ? '' : 'none';
-    this.setEl('revDocsCaptured', docs.length ? docs.join(' ✓ ') + ' ✓' : '—');
+    const docsEl = document.getElementById('revDocsCaptured');
+    if (docsEl) {
+      docsEl.innerHTML = docs.length
+        ? docs.map(d => `<div style="padding:1px 0">✓ ${d}</div>`).join('')
+        : '—';
+    }
 
     // Show/hide third-party rows
     const thirdRows = ['revRowThirdDamage', 'revRowThirdSeverity', 'revRowThirdType'];
@@ -1791,7 +1829,10 @@ populateContextScreen() {
           this.api.call('Get', { typeName: 'AddIn' }, resolve, () => resolve([]))
         );
         const mine = (addIns || []).find(a =>
-          JSON.stringify(a.configuration || a).includes('incident-addin-v2')
+          // Match on v3 URL first, v2 URL for backward compat, or add-in name
+          ['incident-addin-v3', 'incident-addin-v2', 'Incident Reconstruction Engine'].some(
+            term => JSON.stringify(a.configuration || a).includes(term)
+          )
         );
         resolvedAddInId = mine?.id || null;
         if (resolvedAddInId) this._cachedAddInId = resolvedAddInId;
@@ -2181,7 +2222,7 @@ populateContextScreen() {
     lines.push('');
 
     if (d.answers.thirdParty) {
-      lines.push('— Damage: Third Party Vehicle —');
+      lines.push('— Damage: 3rd Party Vehicle —');
       if (d.answers.thirdPartyType) {
         lines.push('Q: What type of vehicle?');
         lines.push(`A: ${d.answers.thirdPartyType}`);
@@ -2196,7 +2237,7 @@ populateContextScreen() {
       if (d.docLicense) docs.push("Driver's License");
       if (d.docInsurance) docs.push('Insurance Card');
       if (d.docRegistration) docs.push('Vehicle Registration');
-      lines.push('— Third Party Driver Info —');
+      lines.push('— 3rd Party Driver Info —');
       lines.push(`Name: ${d.ocr.name || '—'}`);
       lines.push(`Insurance policy #: ${d.ocr.policy || '—'}`);
       lines.push(`Vehicle VIN: ${d.ocr.vin || '—'}`);
