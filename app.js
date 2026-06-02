@@ -267,18 +267,28 @@ const app = {
     }
   },
 
-  // Classify a Geotab rule name into a severity tier for the badge.
-  // Geotab's collision rules typically include "Major Collision", "Minor Collision",
-  // "Possible Collision", "Near Collision" / "Near Miss" in the name.
-  _classifyIncident(ruleName) {
-    const r = (ruleName || '').toLowerCase();
-    if (r.includes('major'))                                 return { label: 'Major Collision',    cls: 'severity-major' };
-    if (r.includes('minor'))                                 return { label: 'Minor Collision',    cls: 'severity-minor' };
-    if (r.includes('near') || r.includes('miss'))            return { label: 'Near Collision',     cls: 'severity-near' };
-    if (r.includes('possible') || r.includes('collision'))   return { label: 'Possible Collision', cls: 'severity-possible' };
-    if (r.includes('harsh') && r.includes('brak'))           return { label: 'Harsh Braking',      cls: 'severity-possible' };
-    if (r.includes('accident'))                              return { label: 'Accident Event',     cls: 'severity-major' };
-    return { label: ruleName || 'Incident', cls: 'severity-default' };
+  // Classify a Geotab rule into a human-readable event type.
+  // Checks both rule.id (Geotab system rule IDs, always present) and rule.name
+  // (display name, sometimes null). System IDs like "RuleEnhancedMajorCollisionId"
+  // are the most reliable signal.
+  _classifyIncident(ruleName, ruleId) {
+    const name = (ruleName || '').toLowerCase();
+    const id   = (ruleId   || '').toLowerCase();
+
+    if (id.includes('major')   || name.includes('major'))              return { type: 'Major Collision',    cls: 'severity-major' };
+    if (id.includes('minor')   || name.includes('minor'))              return { type: 'Minor Collision',    cls: 'severity-minor' };
+    if (id.includes('nearmiss') || id.includes('near_miss') ||
+        id.includes('near')    || name.includes('near') ||
+        name.includes('miss'))                                          return { type: 'Near Collision',     cls: 'severity-near' };
+    if (id.includes('possible')  || name.includes('possible'))         return { type: 'Possible Collision', cls: 'severity-possible' };
+    if (id.includes('collision') || name.includes('collision'))         return { type: 'Possible Collision', cls: 'severity-possible' };
+    if ((id.includes('harsh') && id.includes('brak')) ||
+        (name.includes('harsh') && name.includes('brak')))             return { type: 'Harsh Braking',      cls: 'severity-possible' };
+    if (id.includes('accident') || name.includes('accident'))          return { type: 'Accident',           cls: 'severity-major' };
+
+    // Fallback: use the rule name itself if meaningful, otherwise null (no subtype)
+    const displayName = ruleName && ruleName !== 'Incident' ? ruleName : null;
+    return { type: displayName, cls: 'severity-default' };
   },
 
   // Geotab event IDs are long URL-safe base64 strings; show the first 8 chars
@@ -291,8 +301,8 @@ const app = {
   },
 
   buildIncidentCard(event, isCompleted) {
-    const ruleName = event.rule?.name || 'Incident';
-    const severity = this._classifyIncident(ruleName);
+    const severity = this._classifyIncident(event.rule?.name, event.rule?.id);
+    const title = severity.type ? `Incident — ${severity.type}` : 'Incident';
     const date = new Date(event.activeFrom);
     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     // Include seconds — multiple accelerometer events can occur in the same minute
@@ -319,7 +329,7 @@ const app = {
     div.innerHTML = `
       <div class="card-header">
         <div class="card-icon collision">${svgIcon}</div>
-        <h3 style="flex:1;line-height:1.3">${this._escHtml(severity.label)}</h3>
+        <h3 style="flex:1;line-height:1.3">${this._escHtml(title)}</h3>
         ${badge}
       </div>
       <p class="description" style="font-size:12px;color:var(--text-muted);margin:2px 0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">Event ${shortId}</p>
