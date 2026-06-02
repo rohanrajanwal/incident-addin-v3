@@ -202,14 +202,17 @@ const app = {
       const ruleMap = {};
       (allRules || []).forEach(r => { ruleMap[r.id] = r; });
 
-      // Identify collision/incident rules by name (case-insensitive substring match)
+      // Identify collision rules by name. Restricted to 'collision' substring (case-insensitive) —
+      // broader matches like 'accident'/'crash'/'impact' picked up unrelated rule types on g560.
+      // This catches Possible collision, Major Collision, Minor Collision, Near Collision, etc.
       const isCollisionRule = (r) => {
         const n = (r.name || '').toLowerCase();
-        return n.includes('collision') || n.includes('accident') || n.includes('crash') || n.includes('impact');
+        return n.includes('collision');
       };
       const collisionRuleIds = new Set(
         (allRules || []).filter(isCollisionRule).map(r => r.id)
       );
+      console.log('[Incidents] matched collision rules:', (allRules || []).filter(isCollisionRule).map(r => r.name));
       console.log('[Incidents] collision rule IDs:', [...collisionRuleIds]);
       console.log('[Incidents] total events fetched:', (events || []).length);
       console.log('[Incidents] sample event rule:', JSON.stringify(events?.[0]?.rule || null));
@@ -235,10 +238,17 @@ const app = {
       this._eventsCache = {};
       collisionEvents.forEach(e => { this._eventsCache[e.id] = e; });
 
-      // Sort newest first
-      const sorted = collisionEvents.sort((a, b) =>
-        new Date(b.activeFrom) - new Date(a.activeFrom)
-      );
+      // Sort newest first (by activeFrom timestamp, with event ID as tiebreaker for stability)
+      const sorted = collisionEvents.sort((a, b) => {
+        const diff = new Date(b.activeFrom) - new Date(a.activeFrom);
+        if (diff !== 0) return diff;
+        return (b.id || '').localeCompare(a.id || '');
+      });
+      console.log('[Incidents] sorted events:', sorted.map(e => ({
+        id: e.id?.slice(0, 12),
+        activeFrom: e.activeFrom,
+        ruleName: e.rule?.name
+      })));
 
       const unreported = sorted.filter(e => !reportedIds.has(e.id));
       const reported = sorted.filter(e => reportedIds.has(e.id));
