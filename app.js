@@ -615,24 +615,29 @@ const app = {
   captureSceneVideo() {
     // NOTE: Live video recording is disabled. Geotab Drive's iOS app is missing
     // NSMicrophoneUsageDescription in its Info.plist — iOS terminates the process
-    // the moment anything requests microphone access (recording, capture, getUserMedia).
-    // This is confirmed: Drive does not appear in Settings → Privacy → Microphone.
-    // Re-enable capture="environment" here once Geotab adds the key and ships an update.
-    //
-    // For now: open the video library picker only (selecting existing videos needs no mic).
+    // the moment anything requests microphone access. Library picker only.
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'video/*';
-    // No capture attribute — library picker only, no camera, no mic access, no crash.
     input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        this._sceneVideoBlob = file;
-        this.reportData.sceneVideo = { name: file.name, size: file.size };
-        document.getElementById('sceneVideoSlot').style.display = 'none';
-        document.getElementById('sceneVideoPreview').style.display = 'flex';
-        this.setEl('sceneVideoName', file.name);
+        // iOS WKWebView issue: File references from <input type="file"> can become invalid
+        // after the input is removed from the DOM. Materialize the bytes into a fresh Blob
+        // immediately so we have a persistent reference for the submit.
+        try {
+          const buf = await file.arrayBuffer();
+          this._sceneVideoBlob = new Blob([buf], { type: file.type || 'video/mp4' });
+          this.reportData.sceneVideo = { name: file.name, size: file.size, type: file.type };
+          document.getElementById('sceneVideoSlot').style.display = 'none';
+          document.getElementById('sceneVideoPreview').style.display = 'flex';
+          this.setEl('sceneVideoName', file.name);
+          console.log('[Video] Materialized scene video:', file.name, file.size, 'bytes,', file.type);
+        } catch (err) {
+          console.error('[Video] Failed to materialize video file:', err);
+          alert('Could not attach video — please try again or skip this step.');
+        }
       }
       if (input.parentNode) input.parentNode.removeChild(input);
     };
@@ -1664,6 +1669,7 @@ populateContextScreen() {
       addInDataId, addInDataError,
       mediaFileIds = [], uploadErrors = [], binaryErrors = [], attachmentErrors = [],
       commentOk, commentError,
+      sceneVideoStatus, sceneVideoError,
       exceptionEventId, mediaFileSupported, mediaFileSample, deviceId
     } = receipt;
     const lines = [];
@@ -1694,6 +1700,15 @@ populateContextScreen() {
       mediaFileIds.forEach(f => lines.push(`&nbsp;&nbsp;• ${f.name}${f.binaryOk ? '' : ' <span style="color:var(--error)">(no binary)</span>'}`));
     } else {
       lines.push(`<strong>Files uploaded:</strong> None`);
+    }
+
+    if (sceneVideoStatus && sceneVideoStatus !== 'none') {
+      const sv = sceneVideoStatus === 'success'
+        ? 'uploaded ✓'
+        : sceneVideoStatus === 'failed'
+          ? `<span style="color:var(--error)">failed — ${sceneVideoError || 'unknown'}</span>`
+          : 'attempted';
+      lines.push(`<strong>Scene video:</strong> ${sv}`);
     }
 
     if (exceptionEventId) {
@@ -1794,24 +1809,49 @@ populateContextScreen() {
       }
     }
 
-    // 3b. Upload scene video blob if captured
-    if (this.reportData.sceneVideo && this._sceneVideoBlob) {
-      this.setEl('submitStatus', 'Uploading scene video…');
-      try {
-        const result = await this.uploadVideoFile(
-          this._sceneVideoBlob, 'SceneVideo',
-          deviceId, driverId, dateTime, exceptionEventId, server, credentials
-        );
-        if (result?.id) {
-          mediaFileIds.push({ id: result.id, name: 'SceneVideo', binaryOk: result.binaryOk });
-          if (!result.binaryOk) binaryErrors.push(`SceneVideo: ${result.binaryError || 'unknown'}`);
-          if (exceptionEventId) {
-            const att = await this._attachMediaToException(result.id, exceptionEventId);
-            if (!att.ok) attachmentErrors.push(`SceneVideo: ${att.error}`);
+    // 3b. Upload scene video blob if captured.
+    // Track all three possible states distinctly so the receipt shows truth:
+    //   - sceneVideoStatus: 'none' (user never attached), 'attempted', 'success', or 'failed'
+    let sceneVideoStatus = 'none';
+    let sceneVideoError = null;
+    if (this.reportData.sceneVideo) {
+      sceneVideoStatus = 'attempted';
+      if (!this._sceneVideoBlob) {
+        sceneVideoError = 'Video blob missing at submit time (likely iOS File reference invalidation).';
+        sceneVideoStatus = 'failed';
+        binaryErrors.push(`SceneVideo: ${sceneVideoError}`);
+        console.error('[Submit] Scene video metadata exists but blob is null — possible iOS File invalidation');
+      } else {
+        this.setEl('submitStatus', 'Uploading scene video…');
+        try {
+          const result = await this.uploadVideoFile(
+            this._sceneVideoBlob, 'SceneVideo',
+            deviceId, driverId, dateTime, exceptionEventId, server, credentials
+          );
+          if (result?.id) {
+            mediaFileIds.push({ id: result.id, name: 'SceneVideo', binaryOk: result.binaryOk });
+            if (!result.binaryOk) {
+              binaryErrors.push(`SceneVideo: ${result.binaryError || 'unknown'}`);
+              sceneVideoStatus = 'failed';
+              sceneVideoError = result.binaryError;
+            } else {
+              sceneVideoStatus = 'success';
+            }
+            if (exceptionEventId) {
+              const att = await this._attachMediaToException(result.id, exceptionEventId);
+              if (!att.ok) attachmentErrors.push(`SceneVideo: ${att.error}`);
+            }
+          } else {
+            sceneVideoStatus = 'failed';
+            sceneVideoError = 'MediaFile.Add returned no ID';
+            binaryErrors.push(`SceneVideo: ${sceneVideoError}`);
           }
+        } catch (e) {
+          sceneVideoStatus = 'failed';
+          sceneVideoError = (e?.message || String(e)).slice(0, 200);
+          binaryErrors.push(`SceneVideo: ${sceneVideoError}`);
+          console.warn('[Submit] Scene video upload failed:', e);
         }
-      } catch (e) {
-        console.warn('[Submit] Scene video upload failed:', e);
       }
     }
 
@@ -1917,6 +1957,7 @@ populateContextScreen() {
       addInDataId, addInDataError,
       mediaFileIds, uploadErrors, binaryErrors, attachmentErrors,
       commentOk, commentError,
+      sceneVideoStatus, sceneVideoError,
       exceptionEventId, mediaFileSupported, mediaFileSample, deviceId
     };
   },
