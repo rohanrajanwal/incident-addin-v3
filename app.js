@@ -202,17 +202,21 @@ const app = {
       const ruleMap = {};
       (allRules || []).forEach(r => { ruleMap[r.id] = r; });
 
-      // Identify collision rules by name. Restricted to 'collision' substring (case-insensitive) —
-      // broader matches like 'accident'/'crash'/'impact' picked up unrelated rule types on g560.
-      // This catches Possible collision, Major Collision, Minor Collision, Near Collision, etc.
+      // Identify collision/incident rules by two signals:
+      // 1. System rule IDs — Geotab's built-in collision rules have PascalCase descriptive IDs
+      //    like "RuleEnhancedMajorCollisionId", "RulePossibleCollisionId". Custom rules use
+      //    base64 GUID IDs (e.g. "aXy123...") which won't match.
+      // 2. Exact known rule names (case-insensitive) — for any custom collision rules.
+      // Substring matching for "collision" was too broad — caught notification/alert rules on g560.
+      const KNOWN_COLLISION_NAMES = ['possible collision', 'major collision', 'minor collision', 'near collision', 'enhanced major collision', 'enhanced minor collision', 'accident level event'];
       const isCollisionRule = (r) => {
-        const n = (r.name || '').toLowerCase();
-        return n.includes('collision');
+        if ((r.id || '').includes('Collision')) return true;
+        const n = (r.name || '').toLowerCase().trim();
+        return KNOWN_COLLISION_NAMES.includes(n);
       };
-      const collisionRuleIds = new Set(
-        (allRules || []).filter(isCollisionRule).map(r => r.id)
-      );
-      console.log('[Incidents] matched collision rules:', (allRules || []).filter(isCollisionRule).map(r => r.name));
+      const matchedRules = (allRules || []).filter(isCollisionRule);
+      const collisionRuleIds = new Set(matchedRules.map(r => r.id));
+      console.log('[Incidents] matched collision rules:', matchedRules.map(r => `${r.name} (${r.id})`));
       console.log('[Incidents] collision rule IDs:', [...collisionRuleIds]);
       console.log('[Incidents] total events fetched:', (events || []).length);
       console.log('[Incidents] sample event rule:', JSON.stringify(events?.[0]?.rule || null));
@@ -326,9 +330,11 @@ const app = {
   buildIncidentCard(event, isCompleted) {
     const severity = this._classifyIncident(event.rule?.name, event.rule?.id);
     const title = severity.type ? `Incident — ${severity.type}` : 'Incident';
-    const date = new Date(event.activeFrom);
+    // Round to nearest second before display — MyGeotab rounds milliseconds, JS truncates,
+    // causing 1-second discrepancies for events stored at e.g. 20:51:20.710Z (shows :20 in JS, :21 in MYG)
+    const rawMs = new Date(event.activeFrom).getTime();
+    const date = new Date(Math.round(rawMs / 1000) * 1000);
     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    // Include seconds — multiple accelerometer events can occur in the same minute
     const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
     const vehicleName = event.device?.name || this.state?.device?.name || '';
     const shortId = this._shortEventId(event.id);
