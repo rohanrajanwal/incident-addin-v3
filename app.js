@@ -2052,7 +2052,7 @@ populateContextScreen() {
     // Resize/compress before upload
     const resized = await this._resizeImage(base64DataUrl);
 
-    const fileName = this._randomFileName('jpg');
+    const fileName = this._descriptiveFileName(name, 'jpg', exceptionEventId);
 
     // Step 1: Create the MediaFile entity (metadata only — minimal fields per official pattern)
     // SolutionId must be a valid Geotab-format ID (base64-encoded GUID), not an arbitrary string.
@@ -2130,7 +2130,7 @@ populateContextScreen() {
     // multipart part's Content-Type header. If blob.type is empty or wrong, the upload is rejected.
     const typedBlob = blob.type === mime ? blob : new Blob([blob], { type: mime });
 
-    const fileName = this._randomFileName(ext);
+    const fileName = this._descriptiveFileName(name, ext, exceptionEventId);
 
     const entityId = await new Promise((resolve, reject) =>
       this.api.call('Add', {
@@ -2221,11 +2221,21 @@ populateContextScreen() {
     return null;
   },
 
-  _randomFileName(ext) {
+  // Build a human-readable MediaFile name like "UserVehicle_FrontView_3Fa9Kp2x.jpg".
+  // The suffix is the short exception event id (same 8 chars shown on the incident card)
+  // so a vehicle's files group together and trace back to the event; falls back to a
+  // random token for manual/test reports that have no exception event.
+  _descriptiveFileName(label, ext, exceptionEventId) {
+    const safeLabel = ((label || '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 60)) || 'IncidentMedia';
+    const suffix = (exceptionEventId && this._shortEventId(exceptionEventId)) || this._randomToken(8);
+    return `${safeLabel}_${suffix}.${ext}`;
+  },
+
+  _randomToken(len) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let name = '';
-    for (let i = 0; i < 16; i++) name += chars[Math.floor(Math.random() * chars.length)];
-    return name + '.' + ext;
+    let s = '';
+    for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
   },
 
   async _resizeImage(base64DataUrl, maxWidth = 1280, quality = 0.75) {
