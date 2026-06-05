@@ -2118,22 +2118,15 @@ populateContextScreen() {
   },
 
   async uploadVideoFile(blob, name, deviceId, driverId, eventDateTime, exceptionEventId, server, credentials) {
-    // Match file extension + Content-Type to the blob's actual format. The server validates that
-    // filename extension and the multipart Content-Type agree — mismatch produces
-    // "ArgumentException: .mp4 requires content type video/mp4". Sources of mismatch:
-    //   - iOS Camera app records .mov (video/quicktime)
-    //   - Android picker may return video/webm or video/3gpp
-    //   - iOS Drive sometimes returns application/octet-stream with no real type info
-    const sourceType = (blob?.type || '').toLowerCase();
-    let ext = 'mp4', mime = 'video/mp4';
-    if (sourceType.includes('quicktime') || sourceType.includes('mov'))      { ext = 'mov';  mime = 'video/quicktime'; }
-    else if (sourceType.includes('webm'))                                    { ext = 'webm'; mime = 'video/webm'; }
-    else if (sourceType.includes('3gpp') || sourceType.includes('3gp'))      { ext = '3gp';  mime = 'video/3gpp'; }
-    else if (sourceType.includes('mp4'))                                     { ext = 'mp4';  mime = 'video/mp4'; }
-    // If unknown/octet-stream, assume mp4 — most common on iOS Drive native uploads.
+    // Geotab MediaFile only accepts .mp4 for video — it rejects .mov / .webm / .3gp at the
+    // extension check with "Name extension not supported". iOS Camera/Drive records .mov
+    // (QuickTime) and Android may return .webm, but their H.264/AAC payloads are MP4-compatible,
+    // so we always relabel to .mp4 + video/mp4 (no client-side transcoder is available). This
+    // also satisfies the server's rule that the extension and Content-Type must agree.
+    const ext = 'mp4', mime = 'video/mp4';
 
-    // Ensure the blob actually carries the matching Content-Type. FormData uses blob.type as the
-    // multipart part's Content-Type header. If blob.type is empty or wrong, the upload is rejected.
+    // Ensure the blob carries the matching Content-Type. FormData uses blob.type as the
+    // multipart part's Content-Type header; if it's empty or wrong, the upload is rejected.
     const typedBlob = blob.type === mime ? blob : new Blob([blob], { type: mime });
 
     const fileName = this._descriptiveFileName(name, ext, exceptionEventId);
