@@ -4,6 +4,11 @@
    ======================================== */
 
 const app = {
+  // How far back the incidents list looks for collision ExceptionEvents.
+  // MyGeotab's "Last month" filter is ~calendar-month/looser, so a strict 30-day
+  // window can hide events that still appear in MyGeotab (e.g. an event from 31 days ago).
+  INCIDENT_LOOKBACK_DAYS: 90,
+
   // State
   currentScreen: 'incidents',
   api: null,
@@ -173,7 +178,7 @@ const app = {
       }
 
       const now = new Date();
-      const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+      const lookbackStart = new Date(now - this.INCIDENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
       // Fetch rules, events, and existing reports in parallel
       const [allRules, events, existingReports] = await Promise.all([
@@ -185,7 +190,7 @@ const app = {
             typeName: 'ExceptionEvent',
             search: {
               deviceSearch: { id: deviceId },
-              fromDate: thirtyDaysAgo.toISOString(),
+              fromDate: lookbackStart.toISOString(),
               toDate: now.toISOString()
             }
           }, resolve, reject)
@@ -270,7 +275,7 @@ const app = {
     if (unreported.length === 0) {
       currentList.innerHTML = `
         <div style="text-align:center;padding:28px 16px;color:var(--text-secondary)">
-          <p style="font-size:14px">No open incidents found in the last 30 days.</p>
+          <p style="font-size:14px">No open incidents found in the last ${this.INCIDENT_LOOKBACK_DAYS} days.</p>
           <button class="btn btn-secondary" style="max-width:220px;margin:14px auto 0;display:block;font-size:13px"
             onclick="app.injectTestIncident()">+ Add Test Incident</button>
         </div>`;
