@@ -1005,6 +1005,26 @@ body {
   max-width: 60%;
 }
 
+/* Documents Captured: vertical checklist (overrides the flex-row .value default) */
+#revDocsCaptured {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+  font-weight: 500;
+}
+#revDocsCaptured .doc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+#revDocsCaptured .doc-check {
+  color: var(--success);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 /* Rows that have an Edit link: expand label so value and edit don't collide */
 .review-row:has(.review-edit-link) .label {
   flex: 1;

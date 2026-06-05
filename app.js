@@ -1646,7 +1646,7 @@ populateContextScreen() {
     const docsEl = document.getElementById('revDocsCaptured');
     if (docsEl) {
       docsEl.innerHTML = docs.length
-        ? docs.map(d => `<div style="padding:1px 0">✓ ${d}</div>`).join('')
+        ? docs.map(d => `<div class="doc-item"><span class="doc-check">✓</span><span>${this._escHtml(d)}</span></div>`).join('')
         : '—';
     }
 
@@ -2065,6 +2065,7 @@ populateContextScreen() {
     // Borrowing the official collision-form add-in's SolutionId until we register our own.
     const entity = {
       name: fileName,
+      MediaType: 'Image',
       SolutionId: 'aYnBQxCQMv0-lyIH3F8689Q',
     };
     console.log('[Submit] MediaFile entity:', JSON.stringify(entity));
@@ -2140,7 +2141,7 @@ populateContextScreen() {
     const entityId = await new Promise((resolve, reject) =>
       this.api.call('Add', {
         typeName: 'MediaFile',
-        entity: { name: fileName, SolutionId: 'aYnBQxCQMv0-lyIH3F8689Q' }
+        entity: { name: fileName, MediaType: 'Video', SolutionId: 'aYnBQxCQMv0-lyIH3F8689Q' }
       }, resolve, reject)
     );
 
