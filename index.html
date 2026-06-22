@@ -12,7 +12,7 @@
   <div class="offline-banner" id="offlineBanner">You are offline — data will be saved locally</div>
 
   <!-- ==================== SCREEN 1: Incidents List ==================== -->
-  <div class="screen active" id="screen-incidents">
+  <div class="screen" id="screen-incidents">
     <h2 class="section-title">Current Incidents</h2>
     <p class="section-subtitle">Reports that are in progress</p>
 
@@ -29,7 +29,7 @@
   </div>
 
   <!-- ==================== SCREEN 2: Before You Start (merged Safety + Comms) ==================== -->
-  <div class="screen" id="screen-safety">
+  <div class="screen active" id="screen-safety">
     <div class="safety-hero">
       <div class="shield-circle">
         <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -85,8 +85,7 @@
     </div>
 
     <div class="button-footer">
-      <button class="btn btn-secondary" onclick="app.goTo('incidents')">Back</button>
-      <button class="btn btn-primary" onclick="app.goTo('qualifying')">Got it, start report</button>
+      <button class="btn btn-primary" onclick="app.goTo('incidents')">Continue</button>
     </div>
   </div>
 
@@ -131,7 +130,7 @@
     </div>
 
     <div class="button-footer">
-      <button class="btn btn-secondary" onclick="app.goTo('safety')">Back</button>
+      <button class="btn btn-secondary" onclick="app.goTo('incidents')">Back</button>
       <button class="btn btn-primary" id="qualifyingContinue" onclick="app.qualifyingContinue()">Continue</button>
     </div>
   </div>

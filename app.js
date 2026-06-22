@@ -10,7 +10,7 @@ const app = {
   INCIDENT_LOOKBACK_DAYS: 90,
 
   // State
-  currentScreen: 'incidents',
+  currentScreen: 'safety',
   api: null,
   state: null,
   reportData: {
@@ -390,7 +390,7 @@ const app = {
     const event = exceptionEventId ? (this._eventsCache[exceptionEventId] || null) : null;
     this.reportData.context = {}; // reset context for new report
     this._fetchEventContext(event); // async, runs in background
-    this.goTo('safety');
+    this.goTo('qualifying');
   },
 
   injectTestIncident() {
