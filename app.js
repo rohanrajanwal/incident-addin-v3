@@ -460,6 +460,7 @@ const app = {
     const titles = {
       'incidents': 'Incidents',
       'safety': 'Incident Reporting',
+      'aisetup': 'AI Setup',
       'communication': 'Incident Reporting',
       'qualifying': 'Report Incident',
       'photos-yours': 'Report Incident',
@@ -477,6 +478,41 @@ const app = {
       'success': 'Incident Reporting'
     };
     this.setEl('headerTitle', titles[screenId] || 'Incident Reporting');
+  },
+
+  // ---- AI Setup (prototype: runtime token entry for direct-to-gateway mode) ----
+  showAISetup() {
+    this.goTo('aisetup');
+    const cfg = window.INCIDENT_AI || {};
+    const st = document.getElementById('aiSetupStatus');
+    if (st) {
+      const on = !!(cfg.direct && cfg.direct.token);
+      st.textContent = on ? '✓ Configured — live AI/OCR is enabled on this device.' : 'Not configured — AI/OCR fields stay blank until you save a config.';
+      st.style.color = on ? 'var(--success, #2e7d32)' : 'var(--text-secondary, #666)';
+    }
+  },
+
+  saveAISetup() {
+    const el = document.getElementById('aiSetupInput');
+    const st = document.getElementById('aiSetupStatus');
+    const fail = (msg) => { if (st) { st.textContent = msg; st.style.color = 'var(--error, #c62828)'; } };
+    let parsed;
+    try { parsed = JSON.parse((el.value || '').trim()); }
+    catch (e) { return fail('Invalid JSON — check the format and try again.'); }
+    if (!parsed || !parsed.token || !parsed.baseUrl) return fail('Config needs both "token" and "baseUrl".');
+    try { localStorage.setItem('INCIDENT_AI_DIRECT', JSON.stringify(parsed)); } catch (e) { /* ignore */ }
+    // Apply live so the current session uses it immediately (no reload needed).
+    window.INCIDENT_AI = window.INCIDENT_AI || {};
+    window.INCIDENT_AI.direct = { token: parsed.token, baseUrl: parsed.baseUrl, region: parsed.region || window.INCIDENT_AI.region || 'us' };
+    el.value = ''; // don't leave the token on screen
+    if (st) { st.textContent = '✓ Saved — live AI/OCR is enabled on this device.'; st.style.color = 'var(--success, #2e7d32)'; }
+  },
+
+  clearAISetup() {
+    try { localStorage.removeItem('INCIDENT_AI_DIRECT'); } catch (e) { /* ignore */ }
+    if (window.INCIDENT_AI) delete window.INCIDENT_AI.direct;
+    const st = document.getElementById('aiSetupStatus');
+    if (st) { st.textContent = 'Token cleared from this device.'; st.style.color = 'var(--text-secondary, #666)'; }
   },
 
   // ---- Qualifying Questions ----
@@ -563,17 +599,31 @@ const app = {
   },
 
   capturePoliceReport() {
-    this._captureDocFile('policeDocUpload', 'policeDocPreview', 'app.removePoliceDoc()', (data) => {
+    this._captureDocFile('policeDocUpload', 'policeDocPreview', 'app.removePoliceDoc()', async (data) => {
       this.reportData.policeReport.document = data;
-      // Mock OCR — extract report #, officer, badge from the police report card
-      this.reportData.policeReport.reportNumber = 'RPT-2026-04827';
-      this.reportData.policeReport.officerName = 'Ofc. M. Williams';
-      this.reportData.policeReport.badgeNumber = '4821';
+      const pr = this.reportData.policeReport;
+      const render = () => {
+        const r = document.getElementById('ocrResultsPolice');
+        if (r) r.style.display = 'block';
+        this.setEl('ocrPoliceReport', pr.reportNumber || '—');
+        this.setEl('ocrPoliceOfficer', pr.officerName || '—');
+        this.setEl('ocrPoliceBadge', pr.badgeNumber || '—');
+      };
+
       const r = document.getElementById('ocrResultsPolice');
       if (r) r.style.display = 'block';
-      this.setEl('ocrPoliceReport', this.reportData.policeReport.reportNumber);
-      this.setEl('ocrPoliceOfficer', this.reportData.policeReport.officerName);
-      this.setEl('ocrPoliceBadge', this.reportData.policeReport.badgeNumber);
+      this.setEl('ocrPoliceReport', '…'); this.setEl('ocrPoliceOfficer', '…'); this.setEl('ocrPoliceBadge', '…');
+      if (window.IncidentAIVision) {
+        try {
+          const f = await window.IncidentAIVision.extractDocument('police', data);
+          pr.reportNumber = f.reportNumber || '';
+          pr.officerName = f.officerName || '';
+          pr.badgeNumber = f.badgeNumber || '';
+        } catch (e) {
+          console.warn('[OCR] Police report extraction failed:', e);
+        }
+      }
+      render(); // '…' placeholders resolve to '—' for any field left empty
     });
   },
 
@@ -589,15 +639,29 @@ const app = {
   },
 
   captureCitationDoc() {
-    this._captureDocFile('citationDocUpload', 'citationDocPreview', 'app.removeCitationDoc()', (data) => {
+    this._captureDocFile('citationDocUpload', 'citationDocPreview', 'app.removeCitationDoc()', async (data) => {
       this.reportData.policeReport.citationDoc = data;
-      // Mock OCR — extract citation # and violations
-      this.reportData.policeReport.citationNumber = 'CIT-2026-11432';
-      this.reportData.policeReport.citationViolations = 'Following too closely';
+      const pr = this.reportData.policeReport;
+      const render = () => {
+        const r = document.getElementById('ocrResultsCitation');
+        if (r) r.style.display = 'block';
+        this.setEl('ocrCitationNumber', pr.citationNumber || '—');
+        this.setEl('ocrCitationViolations', pr.citationViolations || '—');
+      };
+
       const r = document.getElementById('ocrResultsCitation');
       if (r) r.style.display = 'block';
-      this.setEl('ocrCitationNumber', this.reportData.policeReport.citationNumber);
-      this.setEl('ocrCitationViolations', this.reportData.policeReport.citationViolations);
+      this.setEl('ocrCitationNumber', '…'); this.setEl('ocrCitationViolations', '…');
+      if (window.IncidentAIVision) {
+        try {
+          const f = await window.IncidentAIVision.extractDocument('citation', data);
+          pr.citationNumber = f.citationNumber || '';
+          pr.citationViolations = f.citationViolations || '';
+        } catch (e) {
+          console.warn('[OCR] Citation extraction failed:', e);
+        }
+      }
+      render(); // '…' placeholders resolve to '—' for any field left empty
     });
   },
 
@@ -981,31 +1045,18 @@ const app = {
   },
 
   async _runDocOCR(type, imageData) {
-    // Mock OCR per document type. Replace with real GenAI Gateway call in Phase 3.
-    const mock = {
-      license: {
-        dlName: 'Robert Johnson',
-        dlNumber: 'D1234-5678-9012',
-        dlDob: '1985-03-22',
-        dlAddress: '742 Evergreen Terrace, Springfield, IL'
-      },
-      insurance: {
-        name: 'Robert Johnson',
-        policy: 'POL-789456123',
-        insurer: 'State Farm',
-        insDates: '01/2026 — 01/2027'
-      },
-      registration: {
-        vin: '1FTFW1ET5DFC10042',
-        plate: 'ABC 1234',
-        makeModel: '2022 Ford F-150 SuperCrew',
-        regYear: '2022',
-        regOwner: 'Robert Johnson'
-      }
-    }[type] || {};
-    // Merge into flat ocr object (preserves backward compat for formatReportText / AddInData)
-    Object.assign(this.reportData.ocr, mock);
-    this._renderDocFields(type);
+    // Real OCR only — never fabricate mock data. If the vision module is missing,
+    // leave the fields for manual entry.
+    if (!window.IncidentAIVision) { console.warn('[OCR] vision module not loaded'); return; }
+    this._setDocOcrLoading(type, true);
+    try {
+      const fields = await window.IncidentAIVision.extractDocument(type, imageData);
+      Object.assign(this.reportData.ocr, fields);
+      this._renderDocFields(type);
+    } catch (e) {
+      console.warn('[OCR] Real extraction failed:', e);
+      this._setDocOcrLoading(type, false); // reset placeholders to —
+    }
   },
 
   _renderDocFields(type) {
@@ -1035,6 +1086,20 @@ const app = {
     if (type === 'license') { o.dlName = ''; o.dlNumber = ''; o.dlDob = ''; o.dlAddress = ''; }
     else if (type === 'insurance') { o.name = ''; o.policy = ''; o.insurer = ''; o.insDates = ''; }
     else if (type === 'registration') { o.vin = ''; o.plate = ''; o.makeModel = ''; o.regYear = ''; o.regOwner = ''; }
+  },
+
+  // Show a "reading…" state in the OCR results box during a real extraction call.
+  // off=true (loading) fills field values with '…'; off=false resets any remaining '…' to '—'.
+  _setDocOcrLoading(type, loading) {
+    const m = this._docMap[type];
+    if (!m) return;
+    const r = document.getElementById(m.results);
+    if (!r) return;
+    r.style.display = 'block';
+    r.querySelectorAll('.field-value').forEach(el => {
+      if (loading) el.textContent = '…';
+      else if (el.textContent === '…') el.textContent = '—';
+    });
   },
 
   // ---- Photo Capture ----
@@ -1157,7 +1222,7 @@ const app = {
       document.getElementById('aiAnalysisStatusYours').style.display = 'block';
 
       try {
-        const results = await this.callAIAnalysis(this.reportData.photosYours);
+        const results = await this.callAIAnalysis(this.reportData.photosYours, 'first');
         this.reportData.aiResults = results;
         this.applyAIResults(results);
       } catch (err) {
@@ -1193,7 +1258,7 @@ const app = {
       document.getElementById('aiAnalysisStatusThird').style.display = 'block';
 
       try {
-        const results = await this.callAIAnalysis(this.reportData.photosThird);
+        const results = await this.callAIAnalysis(this.reportData.photosThird, 'third');
         if (this.reportData.aiResults) {
           if (results.damageZones && results.damageZones.third) {
             this.reportData.aiResults.damageZones.third = results.damageZones.third;
@@ -1201,6 +1266,11 @@ const app = {
           if (results.severityThird) {
             this.reportData.aiResults.severityThird = results.severityThird;
           }
+          // Third-party identity comes from the OTHER vehicle's photos, so copy it
+          // from this (third) result — the first-vehicle call could not know it.
+          if (results.thirdPartyVehicleType) this.reportData.aiResults.thirdPartyVehicleType = results.thirdPartyVehicleType;
+          if (results.thirdPartyVIN) this.reportData.aiResults.thirdPartyVIN = results.thirdPartyVIN;
+          if (results.thirdPartyPlate) this.reportData.aiResults.thirdPartyPlate = results.thirdPartyPlate;
         } else {
           this.reportData.aiResults = results;
         }
@@ -1224,42 +1294,11 @@ const app = {
     this.goTo('review');
   },
 
-  async callAIAnalysis(photos) {
-    // In production, this calls your backend API
-    // For dev/mock, we simulate a response
-    if (this.api && this.api._isMock) {
-      return this.getMockAIResults();
-    }
-
-    // Real API call would go here:
-    // const response = await fetch(AI_BACKEND_URL, { ... });
-    // return response.json();
-    return this.getMockAIResults();
-  },
-
-  getMockAIResults() {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve({
-          thirdPartyDetected: true,
-          thirdPartyVehicleType: 'Pick Up Truck',
-          thirdPartyVIN: '1FTFW1ET5DFC10042',
-          thirdPartyPlate: 'ABC 1234',
-          damageZones: {
-            first: ['Front Left', 'Front Center'],
-            third: ['Rear Center', 'Rear Right']
-          },
-          severityFirst: 'Functional',
-          severityThird: 'Minor',
-          confidenceScores: {
-            vehicleType: 0.92,
-            vin: 0.67,
-            plate: 0.88,
-            severity: 0.81
-          }
-        });
-      }, 2000);
-    });
+  async callAIAnalysis(photos, party = 'first') {
+    // Real vision analysis only. If the proxy/module is unavailable this throws and
+    // the caller continues with manual entry — we never fabricate mock data.
+    if (!window.IncidentAIVision) throw new Error('AI vision module not loaded');
+    return await window.IncidentAIVision.analyzePhotos(photos, { party });
   },
 
   applyAIResults(results) {

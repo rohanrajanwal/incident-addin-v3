@@ -1,0 +1,9 @@
+# Dev-only AI proxy + test harness — reference internal gateway endpoints; never publish.
+dev/ai-proxy.py
+dev/ai-test.py
+dev/ai-samples/
+dev/csp-probe-console.js
+
+# Local secrets / scratch
+*.local
+.env

@@ -86,11 +86,31 @@
 
     <div class="button-footer">
       <button class="btn btn-primary" onclick="app.goTo('incidents')">Continue</button>
+      <button class="btn btn-secondary" style="margin-top:8px;font-size:12px;opacity:0.7" onclick="app.showAISetup()">AI Setup (prototype)</button>
     </div>
   </div>
 
   <!-- screen-communication kept as alias so any back-links still work -->
   <div class="screen" id="screen-communication" style="display:none"></div>
+
+  <!-- ==================== AI Setup (prototype token entry) ==================== -->
+  <!-- Prototype-only: lets the single tester enter their GenAI token+baseUrl at
+       runtime so the add-in calls the gateway directly. Stored ONLY in this
+       device's localStorage — never committed. Not for production/multi-user. -->
+  <div class="screen" id="screen-aisetup">
+    <h2 class="section-title">AI Setup</h2>
+    <p class="section-subtitle">Prototype only. Paste your GenAI config to enable live AI/OCR on <em>this device</em>. It's stored only here, never uploaded. Use test/dummy documents.</p>
+    <div class="question-group">
+      <label>Config JSON</label>
+      <textarea id="aiSetupInput" rows="6" style="width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:10px;border:1px solid var(--border,#ccc);border-radius:8px" placeholder='{"token":"...","baseUrl":"...","region":"us"}'></textarea>
+    </div>
+    <p id="aiSetupStatus" style="font-size:13px;margin:8px 0"></p>
+    <div class="button-footer">
+      <button class="btn btn-primary" onclick="app.saveAISetup()">Save</button>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="app.clearAISetup()">Clear token from device</button>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="app.goTo('safety')">Back</button>
+    </div>
+  </div>
 
   <!-- ==================== SCREEN 5: Qualifying Questions ==================== -->
   <div class="screen" id="screen-qualifying">
@@ -1055,6 +1075,8 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="ai-config.js?v=3"></script>
+  <script src="ai-vision.js?v=2"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
