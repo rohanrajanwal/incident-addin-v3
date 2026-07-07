@@ -496,10 +496,18 @@ const app = {
     const el = document.getElementById('aiSetupInput');
     const st = document.getElementById('aiSetupStatus');
     const fail = (msg) => { if (st) { st.textContent = msg; st.style.color = 'var(--error, #c62828)'; } };
-    let parsed;
-    try { parsed = JSON.parse((el.value || '').trim()); }
-    catch (e) { return fail('Invalid JSON — check the format and try again.'); }
-    if (!parsed || !parsed.token || !parsed.baseUrl) return fail('Config needs both "token" and "baseUrl".');
+    const tryParse = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
+    // Be forgiving about paste damage: copying a long line from a wrapped
+    // terminal inserts stray line breaks (often inside the token), and mobile
+    // keyboards can substitute smart quotes. Normalize curly quotes, then try
+    // as-is; if that fails, collapse ALL whitespace (none of token/baseUrl/region
+    // contain legitimate internal whitespace, so this safely repairs the paste).
+    const raw = (el.value || '').trim()
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'");
+    const parsed = tryParse(raw) || tryParse(raw.replace(/\s+/g, ''));
+    if (!parsed) return fail('Invalid JSON — check the format and try again.');
+    if (!parsed.token || !parsed.baseUrl) return fail('Config needs both "token" and "baseUrl".');
     try { localStorage.setItem('INCIDENT_AI_DIRECT', JSON.stringify(parsed)); } catch (e) { /* ignore */ }
     // Apply live so the current session uses it immediately (no reload needed).
     window.INCIDENT_AI = window.INCIDENT_AI || {};
