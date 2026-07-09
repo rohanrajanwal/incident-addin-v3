@@ -81,6 +81,33 @@
     return s;
   }
 
+  // Normalize an image data URL before sending to the model: downscale to a
+  // modest size and RE-ENCODE to JPEG. This is required, not cosmetic — raw
+  // phone photos are often multi-MB and/or iOS HEIC, which the vision model
+  // rejects (HEIC unsupported) or which blow past per-image/request size limits.
+  // On iOS the canvas can decode HEIC, so this also converts it to JPEG.
+  // Falls back to the original if the image can't be decoded (e.g. HEIC on desktop).
+  function _toJpeg(dataUrl, maxW, q) {
+    maxW = maxW || 1280; q = q || 0.75;
+    return new Promise((resolve) => {
+      if (!dataUrl || typeof dataUrl !== 'string') return resolve(dataUrl);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth || maxW, h = img.naturalHeight || maxW;
+          const scale = Math.min(1, maxW / w);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(w * scale));
+          canvas.height = Math.max(1, Math.round(h * scale));
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', q));
+        } catch (e) { resolve(dataUrl); }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
   // ---- Direct-to-gateway mode (prototype) ----
   // When a runtime token+baseUrl is configured (AI Setup screen -> localStorage),
   // the add-in calls the GenAI Gateway's /chat/completions directly from the
@@ -181,7 +208,10 @@
    */
   async function analyzePhotos(photos, opts = {}) {
     const party = opts.party === 'third' ? 'third' : 'first';
-    const imgs = (photos || []).filter(Boolean);
+    // Downscale + JPEG-normalize every photo before sending (raw phone photos are
+    // often too large / HEIC, which the model rejects). Scene frames are already
+    // small JPEGs from the canvas extractor.
+    const imgs = await Promise.all((photos || []).filter(Boolean).map(p => _toJpeg(p)));
     const frames = (opts.sceneFrames || []).filter(Boolean);
     if (!imgs.length && !frames.length) throw new Error('No photos to analyze');
 
@@ -220,10 +250,12 @@
     if (!fields) throw new Error('Unknown document type: ' + type);
     if (!imageDataUrl) throw new Error('No image to OCR');
 
+    // Same normalization as photos — document captures can also be HEIC / large.
+    const image = await _toJpeg(imageDataUrl);
     const d = cfg().direct;
     const raw = (d && d.token)
-      ? await _callGatewayDirect(_ocrMessages(type, imageDataUrl))
-      : await _post('/ocr-document', { type, image: imageDataUrl });
+      ? await _callGatewayDirect(_ocrMessages(type, image))
+      : await _post('/ocr-document', { type, image });
     const out = {};
     fields.forEach(k => { out[k] = _str(raw ? raw[k] : null); });
     if (raw && raw.confidence != null) out._confidence = raw.confidence;
