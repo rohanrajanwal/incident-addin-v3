@@ -1427,6 +1427,17 @@ const app = {
     if (results.thirdPartyPlate) {
       this.reportData.ocr.plate = results.thirdPartyPlate;
     }
+
+    // Scene context inferred by the AI (from the photos + 360° video frames) →
+    // Context section. Without this the model's weather/road output was discarded.
+    if (!this.reportData.context) this.reportData.context = {};
+    if (results.weather) {
+      this.reportData.context.weather = results.weather;
+    }
+    if (results.roadConditions) {
+      this.reportData.context.roadConditions = results.roadConditions; // read by the Context screen
+      this.reportData.context.road = results.roadConditions;           // read by formatReportText
+    }
   },
 
   // ---- Edit-from-review flow ----
