@@ -1225,12 +1225,19 @@ const app = {
 
   async analyzeYoursAndContinue() {
     const hasPhotos = this.reportData.photosYours.some(p => p);
+    const hasVideo = !!this._sceneVideoBlob;
 
-    if (hasPhotos && navigator.onLine) {
+    if ((hasPhotos || hasVideo) && navigator.onLine) {
       document.getElementById('aiAnalysisStatusYours').style.display = 'block';
 
       try {
-        const results = await this.callAIAnalysis(this.reportData.photosYours, 'first');
+        // Pull stills from the 360° scene video so the AI analyzes it too.
+        let sceneFrames = null;
+        if (hasVideo) {
+          try { sceneFrames = await this._extractVideoFrames(this._sceneVideoBlob, 4); }
+          catch (e) { console.warn('[Video] Frame extraction failed:', e); }
+        }
+        const results = await this.callAIAnalysis(this.reportData.photosYours, 'first', sceneFrames);
         this.reportData.aiResults = results;
         this.applyAIResults(results);
       } catch (err) {
@@ -1302,11 +1309,67 @@ const app = {
     this.goTo('review');
   },
 
-  async callAIAnalysis(photos, party = 'first') {
+  async callAIAnalysis(photos, party = 'first', sceneFrames = null) {
     // Real vision analysis only. If the proxy/module is unavailable this throws and
     // the caller continues with manual entry — we never fabricate mock data.
+    // sceneFrames (optional) are stills extracted from the 360° scene video.
     if (!window.IncidentAIVision) throw new Error('AI vision module not loaded');
-    return await window.IncidentAIVision.analyzePhotos(photos, { party });
+    return await window.IncidentAIVision.analyzePhotos(photos, { party, sceneFrames });
+  },
+
+  // Extract up to `count` evenly-spaced still frames from a captured video Blob,
+  // as downscaled JPEG data URLs, so the AI can "analyze" the 360° scene video.
+  // Degrades gracefully (returns whatever it got, possibly []) — video frame
+  // grabbing in the iOS WKWebView can be flaky, and analysis should still proceed.
+  async _extractVideoFrames(blob, count = 4) {
+    if (!blob) return [];
+    return new Promise((resolve) => {
+      const frames = [];
+      let url;
+      try { url = URL.createObjectURL(blob); } catch (e) { return resolve(frames); }
+      const video = document.createElement('video');
+      video.muted = true; video.setAttribute('muted', '');
+      video.playsInline = true; video.setAttribute('playsinline', '');
+      video.preload = 'auto';
+      let done = false;
+      const finish = () => { if (done) return; done = true; try { URL.revokeObjectURL(url); } catch (e) {} resolve(frames); };
+      const hardCap = setTimeout(finish, 25000);
+      video.onerror = () => { clearTimeout(hardCap); finish(); };
+      video.onloadedmetadata = async () => {
+        const dur = video.duration;
+        if (!isFinite(dur) || dur <= 0) { clearTimeout(hardCap); return finish(); }
+        const canvas = document.createElement('canvas');
+        const maxW = 1024;
+        const grab = (t) => new Promise((res) => {
+          let settled = false;
+          const onSeeked = () => {
+            if (settled) return; settled = true;
+            video.removeEventListener('seeked', onSeeked);
+            try {
+              const vw = video.videoWidth || maxW, vh = video.videoHeight || Math.round(maxW * 0.56);
+              const scale = Math.min(1, maxW / vw);
+              canvas.width = Math.max(1, Math.round(vw * scale));
+              canvas.height = Math.max(1, Math.round(vh * scale));
+              canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+              frames.push(canvas.toDataURL('image/jpeg', 0.8));
+            } catch (e) { /* skip this frame */ }
+            res();
+          };
+          video.addEventListener('seeked', onSeeked);
+          const perTimeout = setTimeout(() => { if (!settled) { settled = true; video.removeEventListener('seeked', onSeeked); res(); } }, 5000);
+          try { video.currentTime = Math.min(t, Math.max(0, dur - 0.05)); }
+          catch (e) { clearTimeout(perTimeout); res(); }
+        });
+        for (let i = 0; i < count; i++) {
+          if (done) break;
+          await grab(dur * (i + 0.5) / count);
+        }
+        clearTimeout(hardCap);
+        finish();
+      };
+      video.src = url;
+      try { video.load(); } catch (e) {}
+    });
   },
 
   applyAIResults(results) {

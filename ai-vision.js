@@ -99,8 +99,9 @@
     citation:     ['a traffic citation / ticket', '{ "citationNumber": str|null, "citationViolations": "violation description"|null, "confidence": 0-1 }']
   };
 
-  function _analyzeMessages(images, party) {
+  function _analyzeMessages(images, party, sceneFrames) {
     const zonesList = ZONES.map(z => '"' + z + '"').join(', ');
+    const hasFrames = !!(sceneFrames && sceneFrames.length);
     let role, schema, extra;
     if (party === 'third') {
       role = 'the OTHER (third-party) vehicle involved in the collision';
@@ -111,13 +112,23 @@
       schema = '{ "damageZones": { "first": [ <zones> ] }, "severityFirst": "Minor"|"Functional"|"Disabling"|null, "weather": "short phrase e.g. Clear, Rain, Snow"|null, "roadConditions": "short phrase e.g. Dry, Wet, Icy"|null, "confidenceScores": { "severity":0-1, "damageZones":0-1 } }';
       extra = 'Infer weather/road conditions only if visible in the scene; otherwise null.';
     }
+    const sceneNote = hasFrames
+      ? ' Some of the images are frames sampled from a 360° walkaround video of the overall scene — use them for weather/road conditions and any additional visible damage; they may also show surroundings and other vehicles.'
+      : '';
     const system =
-      'You are an expert vehicle collision damage assessor. You will receive one or more photos of ' + role + '. Assess visible damage.\n\n' +
+      'You are an expert vehicle collision damage assessor. You will receive one or more images of ' + role + '. Assess visible damage.' + sceneNote + '\n\n' +
       'Damage zones MUST be chosen from this exact list (verbatim strings): [' + zonesList + ']. Include a zone only if it shows visible damage.\n\n' +
       'Severity levels (choose one overall):\n' + SEVERITY_DEFS + '\n\n' + extra + '\n\n' +
       'Respond with ONLY a JSON object in exactly this schema (no prose, no markdown):\n' + schema;
-    const userContent = [{ type: 'text', text: 'Photos to assess:' }]
-      .concat(images.map(u => ({ type: 'image_url', image_url: { url: u } })));
+    const userContent = [];
+    if (images.length) {
+      userContent.push({ type: 'text', text: 'Close-up photos of the vehicle:' });
+      images.forEach(u => userContent.push({ type: 'image_url', image_url: { url: u } }));
+    }
+    if (hasFrames) {
+      userContent.push({ type: 'text', text: 'Frames from the 360° walkaround video of the collision scene:' });
+      sceneFrames.forEach(u => userContent.push({ type: 'image_url', image_url: { url: u } }));
+    }
     return [{ role: 'system', content: system }, { role: 'user', content: userContent }];
   }
 
@@ -171,12 +182,13 @@
   async function analyzePhotos(photos, opts = {}) {
     const party = opts.party === 'third' ? 'third' : 'first';
     const imgs = (photos || []).filter(Boolean);
-    if (!imgs.length) throw new Error('No photos to analyze');
+    const frames = (opts.sceneFrames || []).filter(Boolean);
+    if (!imgs.length && !frames.length) throw new Error('No photos to analyze');
 
     const d = cfg().direct;
     const raw = (d && d.token)
-      ? await _callGatewayDirect(_analyzeMessages(imgs, party))
-      : await _post('/analyze-photos', { photos: imgs, party });
+      ? await _callGatewayDirect(_analyzeMessages(imgs, party, frames))
+      : await _post('/analyze-photos', { photos: imgs, party, sceneFrames: frames });
     const dz = (raw && raw.damageZones) || {};
 
     return {
